@@ -1,8 +1,21 @@
 import Diont from 'diont'
 import GetFreePort from './GetFreePort.js'
-import net from 'net'
-import EventEmitter from 'events'
+import net, { AddressInfo } from 'net'
+
+import * as readline from 'node:readline/promises'
+
+import { stdin as input, stdout as output } from 'node:process'
+
+interface IData {
+	sender: string
+	message: string
+}
+
+const rl = readline.createInterface({ input, output })
+
 const diont = Diont()
+
+let clients: net.Socket[] = []
 
 // ======
 // Listen for announcements and renouncements in services
@@ -12,7 +25,9 @@ diont.on('serviceAnnounced', function (serviceInfo: any) {
 	// This function triggers for services not yet available in diont.getServiceInfos()
 	// serviceInfo is an Object { isOurService : Boolean, service: Object }
 	// service.name, service.host and service.port are always filled
-	console.log('A new service was announced', serviceInfo.service)
+	// console.log('A new service was announced', serviceInfo.service)
+
+	console.log(`\x1b[33m${serviceInfo.service.port}\x1b[0m \x1b[34mJoined\x1b[0m`)
 
 	const conn = net.createConnection({
 		host: serviceInfo.service.host,
@@ -20,9 +35,7 @@ diont.on('serviceAnnounced', function (serviceInfo: any) {
 	})
 
 	conn.on('connect', () => {
-		console.log('Connected', serviceInfo)
-
-		conn.write('data')
+		clients = [...clients, conn]
 	})
 })
 
@@ -34,7 +47,9 @@ const server = net.createServer()
 
 server.on('connection', socket => {
 	socket.on('data', data => {
-		console.log(socket.remotePort, data.toString())
+		const parsedData: IData = JSON.parse(data.toString())
+
+		console.log(`\x1b[33m${parsedData.sender}\x1b[0m ${parsedData.message}`)
 	})
 })
 
@@ -43,11 +58,22 @@ server.listen(port)
 const service = {
 	name: 'Server',
 	port,
-	// any additional information is allowed and will be propagated
 }
 
-// Renounce after 5 seconds
 setInterval(function () {
 	diont.announceService(service)
 	// console.log('All known services', diont.getServiceInfos())
 }, 5000)
+
+rl.prompt()
+
+rl.on('line', message => {
+	for (const client of clients) {
+		const sendData: IData = {
+			sender: port.toString(),
+			message,
+		}
+
+		client.write(JSON.stringify(sendData))
+	}
+})
