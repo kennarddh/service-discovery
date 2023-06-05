@@ -27,7 +27,9 @@ diont.on('serviceAnnounced', function (serviceInfo: any) {
 	// service.name, service.host and service.port are always filled
 	// console.log('A new service was announced', serviceInfo.service)
 
-	console.log(`\x1b[33m${serviceInfo.service.port}\x1b[0m \x1b[34mJoined\x1b[0m`)
+	console.log(
+		`\x1b[33m${serviceInfo.service.port}\x1b[0m \x1b[34mJoined\x1b[0m`
+	)
 
 	const conn = net.createConnection({
 		host: serviceInfo.service.host,
