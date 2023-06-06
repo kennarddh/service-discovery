@@ -12,8 +12,12 @@ interface IEvents {
 	newService: (remoteInfo: dgram.RemoteInfo, handshake: IHandshake) => void
 }
 
+interface ISender {
+	id: string
+}
+
 interface ISendBase {
-	sender: { id: string }
+	sender: ISender
 }
 
 interface ISendAnnounce extends ISendBase {
@@ -34,7 +38,7 @@ type IHandshake = Record<string, any>
 
 class ServiceDiscovery<Data> extends TypedEmitter<
 	IEvents & {
-		data: (data: Data) => void
+		data: (data: { data: Data; sender: ISender }) => void
 	}
 > {
 	private socket: dgram.Socket
@@ -155,7 +159,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 		if (data.type === 'announce') {
 			this.emit('newService', remoteInfo, data.data.handshake)
 		} else if (data.type === 'data') {
-			this.emit('data', data.data as Data)
+			this.emit('data', { data: data.data as Data, sender: data.sender })
 		}
 	}
 }
