@@ -14,7 +14,7 @@ interface IData {
 const rl = readline.createInterface({ input, output })
 
 const diont = Diont({
-	ttl: 128,
+	ttl: 10,
 })
 
 let clients: net.Socket[] = []
