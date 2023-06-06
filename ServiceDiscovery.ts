@@ -54,6 +54,8 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 	private announceIntervalDelay: number
 	private announceInterval: NodeJS.Timer
 
+	private knownServices: string[] = []
+
 	public constructor({
 		host = '224.0.0.114',
 		port = 60540,
@@ -122,6 +124,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 		this.socket.close()
 
 		if (error) this.emit('error', error)
+
 		this.emit('close')
 	}
 
@@ -161,6 +164,10 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 		if (data.sender.id === this.id) return // Ignore this instance message
 
 		if (data.type === 'announce') {
+			if (this.knownServices.includes(data.sender.id)) return // Service already known
+
+			this.knownServices.push(data.sender.id)
+
 			this.emit('newService', {
 				remoteInfo,
 				handshake: data.data.handshake,
