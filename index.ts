@@ -14,7 +14,7 @@ interface IData {
 const rl = readline.createInterface({ input, output })
 
 const diont = Diont({
-	ttl: 10,
+	ttl: 128,
 })
 
 let clients: net.Socket[] = []
@@ -68,7 +68,7 @@ const service = {
 
 setInterval(function () {
 	diont.announceService(service)
-	// console.log('All known services', diont.getServiceInfos())
+	console.log('All known services', diont.getServiceInfos())
 }, 5000)
 
 rl.prompt()
