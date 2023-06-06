@@ -16,8 +16,12 @@ serviceDiscovery.on('close', () => {
 	console.log('Server closed')
 })
 
-serviceDiscovery.on('newService', (remoteInfo, handshake) => {
-	console.log('New service joined, ', { port: remoteInfo.port, handshake })
+serviceDiscovery.on('newService', ({ remoteInfo, handshake, sender }) => {
+	console.log('New service joined, ', {
+		port: remoteInfo.port,
+		handshake,
+		sender,
+	})
 })
 
 serviceDiscovery.on('data', data => {

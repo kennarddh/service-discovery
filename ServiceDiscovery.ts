@@ -9,7 +9,11 @@ interface IEvents {
 	start: (socket: dgram.Socket) => void
 	close: () => void
 	error: (error: Error) => void
-	newService: (remoteInfo: dgram.RemoteInfo, handshake: IHandshake) => void
+	newService: (data: {
+		remoteInfo: dgram.RemoteInfo
+		handshake: IHandshake
+		sender: ISender
+	}) => void
 }
 
 interface ISender {
@@ -157,7 +161,11 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 		if (data.sender.id === this.id) return // Ignore this instance message
 
 		if (data.type === 'announce') {
-			this.emit('newService', remoteInfo, data.data.handshake)
+			this.emit('newService', {
+				remoteInfo,
+				handshake: data.data.handshake,
+				sender: data.sender,
+			})
 		} else if (data.type === 'data') {
 			this.emit('data', { data: data.data as Data, sender: data.sender })
 		}
