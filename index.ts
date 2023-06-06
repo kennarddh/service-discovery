@@ -43,7 +43,9 @@ diont.on('serviceAnnounced', function (serviceInfo: any) {
 	})
 })
 
-const port = await GetFreePort()
+const port = process.argv[2]
+	? parseInt(process.argv[2], 10)
+	: await GetFreePort()
 
 console.log(`Running ${port}`)
 
