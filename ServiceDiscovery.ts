@@ -33,7 +33,7 @@ server.bind(port, () => {
 
 	server.setMulticastLoopback(true)
 	server.setMulticastTTL(1)
-	server.setBroadcast(true)
+	// server.setBroadcast(true)
 
 	const message = id.toString()
 
