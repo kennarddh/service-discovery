@@ -12,15 +12,18 @@ interface IEvents {
 	newService: (remoteInfo: dgram.RemoteInfo, handshake: IHandshake) => void
 }
 
-type ISendAnnounce = {
+interface ISendBase {
+	sender: { id: string }
+}
+
+interface ISendAnnounce extends ISendBase {
 	type: 'announce'
 	data: {
-		id: string
 		handshake: IHandshake
 	}
 }
 
-type ISendData<T> = {
+interface ISendData<T> extends ISendBase {
 	type: 'data'
 	data: T
 }
@@ -84,8 +87,10 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 			this.send({
 				type: 'announce',
 				data: {
-					id: this.id,
 					handshake,
+				},
+				sender: {
+					id: this.id,
 				},
 			})
 
@@ -93,8 +98,10 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 				this.send({
 					type: 'announce',
 					data: {
-						id: this.id,
 						handshake,
+					},
+					sender: {
+						id: this.id,
 					},
 				})
 			}, this.announceIntervalDelay)
@@ -123,12 +130,15 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 	}
 
 	public sendData(data: Data) {
-		this.rawSend(
-			JSON.stringify({
-				type: 'data',
-				data,
-			})
-		)
+		const sendData: ISendData<Data> = {
+			type: 'data',
+			data,
+			sender: {
+				id: this.id,
+			},
+		}
+
+		this.rawSend(JSON.stringify(sendData))
 	}
 
 	private parseMessage(message: Buffer, remoteInfo: dgram.RemoteInfo) {
@@ -139,6 +149,8 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 		)
 
 		if (!isValid) return // Ignore invalid messages
+
+		if (data.sender.id === this.id) return // Ignore this instance message
 
 		if (data.type === 'announce') {
 			this.emit('newService', remoteInfo, data.data.handshake)
