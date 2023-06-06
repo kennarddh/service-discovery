@@ -1,6 +1,6 @@
 import Diont from 'diont'
 import GetFreePort from './GetFreePort.js'
-import net, { AddressInfo } from 'net'
+import net from 'net'
 
 import * as readline from 'node:readline/promises'
 
