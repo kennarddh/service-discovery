@@ -113,6 +113,8 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 			? IInstanceType.Server
 			: IInstanceType.Client
 
+		this.instanceId = crypto.randomUUID()
+
 		this.socket = dgram.createSocket({
 			type: 'udp4',
 			reuseAddr: true,
@@ -137,8 +139,6 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 
 			this.socket.setMulticastLoopback(true)
 			this.socket.setMulticastTTL(1)
-
-			this.instanceId = crypto.randomUUID()
 
 			this.announceIntervalId = SetImmediateInterval(() => {
 				this.send({
