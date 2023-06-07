@@ -2,10 +2,14 @@ import ServiceDiscovery from './ServiceDiscovery.js'
 
 const serviceDiscovery = new ServiceDiscovery<string>()
 
-serviceDiscovery.on('start', socket => {
+serviceDiscovery.on('start', ({ socket, isServer, isClient }) => {
 	const address = socket.address()
 
-	console.log(`Listening ${address.address}:${address.port}`)
+	console.log(
+		`Listening ${address.address}:${address.port} as ${
+			isServer ? 'server' : isClient ? 'client' : ''
+		}`
+	)
 })
 
 serviceDiscovery.on('error', error => {
@@ -19,6 +23,7 @@ serviceDiscovery.on('close', () => {
 serviceDiscovery.on('newService', ({ remoteInfo, handshake, sender }) => {
 	console.log('New service joined, ', {
 		port: remoteInfo.port,
+		host: remoteInfo.address,
 		handshake,
 		sender,
 	})
@@ -28,8 +33,14 @@ serviceDiscovery.on('data', data => {
 	console.log(data)
 })
 
-serviceDiscovery.listen()
+if (!!process.argv[2]) {
+	serviceDiscovery.listen(true, {
+		data: 1,
+	})
+} else {
+	serviceDiscovery.listen(false)
+}
 
 setInterval(() => {
 	serviceDiscovery.sendData('a')
-}, 1000)
+}, 3000)

@@ -7,7 +7,11 @@ import IsValidJson from './IsValidJson.js'
 import SetImmediateInterval from './SetImmediateInterval.js'
 
 interface IEvents {
-	start: (socket: dgram.Socket) => void
+	start: (data: {
+		socket: dgram.Socket
+		isServer: boolean
+		isClient: boolean
+	}) => void
 	close: () => void
 	error: (error: Error) => void
 	newService: (data: {
@@ -50,12 +54,16 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 	private host: string
 	private port: number
 
-	private instaceId: string
+	private instanceId: string
 
 	private announceInterval: number
 	private announceIntervalId: NodeJS.Timer
 
 	private knownServices: string[] = []
+
+	private isServer: boolean
+	private isClient: boolean
+	private isListening: boolean
 
 	public constructor({
 		host = '224.0.0.114',
@@ -69,7 +77,14 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 		this.announceInterval = announceInterval
 	}
 
-	public listen(handshake: IHandshake = {}) {
+	public listen(isServer: true, handshake?: IHandshake): void
+	public listen(isServer: false): void
+
+	public listen(isServer: boolean, handshake: IHandshake = {}) {
+		this.isListening = true
+		this.isServer = isServer
+		this.isClient = !isServer
+
 		this.socket = dgram.createSocket({
 			type: 'udp4',
 			reuseAddr: true,
@@ -84,7 +99,11 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 		)
 
 		this.socket.on('listening', () => {
-			this.emit('start', this.socket)
+			this.emit('start', {
+				socket: this.socket,
+				isServer: this.isServer,
+				isClient: this.isClient,
+			})
 		})
 
 		this.socket.bind(this.port, () => {
@@ -93,19 +112,21 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 			this.socket.setMulticastLoopback(true)
 			this.socket.setMulticastTTL(1)
 
-			this.instaceId = crypto.randomUUID()
+			this.instanceId = crypto.randomUUID()
 
-			this.announceIntervalId = SetImmediateInterval(() => {
-				this.send({
-					type: 'announce',
-					data: {
-						handshake,
-					},
-					sender: {
-						id: this.id,
-					},
-				})
-			}, this.announceInterval)
+			if (this.isServer) {
+				this.announceIntervalId = SetImmediateInterval(() => {
+					this.send({
+						type: 'announce',
+						data: {
+							handshake,
+						},
+						sender: {
+							id: this.id,
+						},
+					})
+				}, this.announceInterval)
+			}
 		})
 	}
 
@@ -114,13 +135,23 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 
 		this.socket.close()
 
+		this.announceIntervalId = null
+
+		this.socket = null
+
+		this.isListening = false
+		this.isServer = false
+		this.isClient = false
+
+		this.instanceId = null
+
 		if (error) this.emit('error', error)
 
 		this.emit('close')
 	}
 
 	public get id() {
-		return this.instaceId
+		return this.instanceId
 	}
 
 	private rawSend(message: string) {
