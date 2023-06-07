@@ -1,8 +1,7 @@
 import ServiceDiscovery from './ServiceDiscovery.js'
 
 const serviceDiscovery = new ServiceDiscovery<string>({
-	shouldAcceptDataBeforeAnnounce: false,
-	announceInterval: 10000,
+	peerAnnounceTimeout: 4000,
 })
 
 serviceDiscovery.on('start', ({ socket }) => {
@@ -60,14 +59,14 @@ if (!!process.argv[2]) {
 
 const dataIntervalId = setInterval(() => {
 	if (serviceDiscovery.isListening) {
-		serviceDiscovery.sendData('a')
+		// serviceDiscovery.sendData('a')
 	} else {
 		clearInterval(dataIntervalId)
 	}
 }, 3000)
 
-setTimeout(() => {
-	if (!!process.argv[2]) {
-		serviceDiscovery.close()
-	}
-}, 10000)
+// setTimeout(() => {
+// 	if (!!process.argv[2]) {
+// 		serviceDiscovery.close()
+// 	}
+// }, 10000)

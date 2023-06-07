@@ -60,6 +60,8 @@ interface IOptions {
 	announceInterval: number
 	shouldAcceptDataBeforeAnnounce: boolean
 
+	peerAnnounceTimeout: number
+
 	clientOptions: Partial<IClientOptions>
 	serverOptions: Partial<IServerOptions>
 }
@@ -84,6 +86,9 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 	private announceIntervalId: NodeJS.Timer
 	private announceInterval: number
 
+	private checkPeerTimeouts: Record<string, NodeJS.Timer> = {}
+	private peerAnnounceTimeout: number
+
 	private knownPeer: IPeer[] = []
 
 	private internalIsListening: boolean
@@ -99,6 +104,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 		port = 60540,
 		ttl = 1,
 		announceInterval = 2000,
+		peerAnnounceTimeout = 4000,
 		shouldAcceptDataBeforeAnnounce = false,
 		serverOptions = {},
 		clientOptions = {},
@@ -108,8 +114,12 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 		this.host = host
 		this.port = port
 		this.ttl = ttl
+
 		this.announceInterval = announceInterval
 		this.shouldAcceptDataBeforeAnnounce = shouldAcceptDataBeforeAnnounce
+
+		this.peerAnnounceTimeout = peerAnnounceTimeout
+
 		this.serverOptions = serverOptions as IServerOptions
 		this.clientOptions = clientOptions as IClientOptions
 	}
@@ -267,15 +277,28 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 		if (data.sender.id === this.id) return // Ignore this instance message
 
 		if (data.type === 'announce') {
-			if (this.isPeerIdKnown(data.sender.id)) return // Peer is already known
+			if (!this.isPeerIdKnown(data.sender.id)) {
+				this.knownPeer.push(data.sender)
 
-			this.knownPeer.push(data.sender)
+				this.emit('newPeer', {
+					remoteInfo,
+					handshake: data.data.handshake,
+					sender: data.sender,
+				})
+			}
 
-			this.emit('newPeer', {
-				remoteInfo,
-				handshake: data.data.handshake,
-				sender: data.sender,
-			})
+			if (this.checkPeerTimeouts[data.sender.id]) {
+				clearTimeout(this.checkPeerTimeouts[data.sender.id])
+			}
+
+			this.checkPeerTimeouts[data.sender.id] = setTimeout(() => {
+				this.removePeer(data.sender.id)
+
+				this.emit('peerRemoved', {
+					remoteInfo,
+					sender: data.sender,
+				})
+			}, this.peerAnnounceTimeout)
 		} else if (data.type === 'close') {
 			if (!this.isPeerIdKnown(data.sender.id)) return // Peer is not known
 
