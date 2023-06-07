@@ -57,8 +57,6 @@ type ISend = ISendAnnounce | ISendClose
 
 type IAllSend<Data> = ISendData<Data> | ISend
 
-type IAllSendTypes = IAllSend<unknown>['type']
-
 enum IPacketType {
 	Acknowledgement,
 	Data,
@@ -78,8 +76,6 @@ interface IPacketAcknowledgement {
 }
 
 type IAllPacket<Data> = IPacketAcknowledgement | IPacketData<Data>
-
-type IAllPacketTypes = IAllPacket<unknown>['type']
 
 type IHandshake = Record<string, any>
 
