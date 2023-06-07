@@ -1,6 +1,13 @@
 import ServiceDiscovery from './ServiceDiscovery.js'
 
-const serviceDiscovery = new ServiceDiscovery<string>()
+const serviceDiscovery = new ServiceDiscovery<string>({
+	serverOptions: {
+		announceInterval: 10000,
+	},
+	clientOptions: {
+		shouldAcceptDataBeforeAnnounce: false,
+	},
+})
 
 serviceDiscovery.on('start', ({ socket }) => {
 	const address = socket.address()
@@ -12,7 +19,7 @@ serviceDiscovery.on('start', ({ socket }) => {
 				: serviceDiscovery.isClient
 				? 'client'
 				: ''
-		}`
+		}, Id: ${serviceDiscovery.id}`
 	)
 })
 
@@ -24,8 +31,8 @@ serviceDiscovery.on('close', () => {
 	console.log('Server closed')
 })
 
-serviceDiscovery.on('newService', ({ remoteInfo, handshake, sender }) => {
-	console.log('New service joined, ', {
+serviceDiscovery.on('newPeer', ({ remoteInfo, handshake, sender }) => {
+	console.log('New peer joined, ', {
 		port: remoteInfo.port,
 		host: remoteInfo.address,
 		handshake,

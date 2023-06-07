@@ -10,19 +10,25 @@ interface IEvents {
 	start: (data: { socket: dgram.Socket }) => void
 	close: () => void
 	error: (error: Error) => void
-	newService: (data: {
+	newPeer: (data: {
 		remoteInfo: dgram.RemoteInfo
 		handshake: IHandshake
-		sender: ISender
+		sender: IPeer
 	}) => void
 }
 
-interface ISender {
+export enum IInstanceType {
+	Client,
+	Server,
+}
+
+interface IPeer {
 	id: string
+	type: IInstanceType
 }
 
 interface ISendBase {
-	sender: ISender
+	sender: IPeer
 }
 
 interface ISendAnnounce extends ISendBase {
@@ -41,9 +47,24 @@ type ISend = ISendAnnounce
 
 type IHandshake = Record<string, any>
 
+interface IOptions {
+	host: string
+	port: number
+	clientOptions: Partial<IClientOptions>
+	serverOptions: Partial<IServerOptions>
+}
+
+interface IServerOptions {
+	announceInterval: number
+}
+
+interface IClientOptions {
+	shouldAcceptDataBeforeAnnounce: boolean
+}
+
 class ServiceDiscovery<Data> extends TypedEmitter<
 	IEvents & {
-		data: (data: { data: Data; sender: ISender }) => void
+		data: (data: { data: Data; sender: IPeer }) => void
 	}
 > {
 	private socket: dgram.Socket
@@ -52,25 +73,30 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 
 	private instanceId: string
 
-	private announceInterval: number
 	private announceIntervalId: NodeJS.Timer
 
-	private knownServices: string[] = []
+	private knownPeer: IPeer[] = []
 
-	private internalIsServer: boolean
-	private internalIsClient: boolean
 	private internalIsListening: boolean
+	private instanceType: IInstanceType
+
+	private clientOptions: IClientOptions
+	private serverOptions: IServerOptions
 
 	public constructor({
 		host = '224.0.0.114',
 		port = 60540,
-		announceInterval = 2000,
-	} = {}) {
+		serverOptions = { announceInterval: 2000 },
+		clientOptions = {
+			shouldAcceptDataBeforeAnnounce: false,
+		},
+	}: Partial<IOptions> = {}) {
 		super()
 
 		this.host = host
 		this.port = port
-		this.announceInterval = announceInterval
+		this.serverOptions = serverOptions as IServerOptions
+		this.clientOptions = clientOptions as IClientOptions
 	}
 
 	public listen(isServer: true, handshake?: IHandshake): void
@@ -78,8 +104,9 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 
 	public listen(isServer: boolean, handshake: IHandshake = {}) {
 		this.isListening = true
-		this.isServer = isServer
-		this.isClient = !isServer
+		this.instanceType = isServer
+			? IInstanceType.Server
+			: IInstanceType.Client
 
 		this.socket = dgram.createSocket({
 			type: 'udp4',
@@ -108,19 +135,18 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 
 			this.instanceId = crypto.randomUUID()
 
-			if (this.isServer) {
-				this.announceIntervalId = SetImmediateInterval(() => {
-					this.send({
-						type: 'announce',
-						data: {
-							handshake,
-						},
-						sender: {
-							id: this.id,
-						},
-					})
-				}, this.announceInterval)
-			}
+			this.announceIntervalId = SetImmediateInterval(() => {
+				this.send({
+					type: 'announce',
+					data: {
+						handshake,
+					},
+					sender: {
+						id: this.id,
+						type: this.instanceType,
+					},
+				})
+			}, this.serverOptions.announceInterval)
 		})
 	}
 
@@ -134,8 +160,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 		this.socket = null
 
 		this.isListening = false
-		this.isServer = false
-		this.isClient = false
+		this.instanceType = null
 
 		this.instanceId = null
 
@@ -149,19 +174,11 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 	}
 
 	public get isServer(): boolean {
-		return this.internalIsServer
-	}
-
-	private set isServer(value) {
-		this.internalIsServer = value
+		return this.instanceType === IInstanceType.Server
 	}
 
 	public get isClient(): boolean {
-		return this.internalIsClient
-	}
-
-	private set isClient(value) {
-		this.internalIsClient = value
+		return this.instanceType === IInstanceType.Client
 	}
 
 	public get isListening(): boolean {
@@ -186,6 +203,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 			data,
 			sender: {
 				id: this.id,
+				type: this.instanceType,
 			},
 		}
 
@@ -204,18 +222,34 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 		if (data.sender.id === this.id) return // Ignore this instance message
 
 		if (data.type === 'announce') {
-			if (this.knownServices.includes(data.sender.id)) return // Service already known
+			if (this.isPeerIdKnown(data.sender.id)) return // Service already known
 
-			this.knownServices.push(data.sender.id)
+			this.knownPeer.push(data.sender)
 
-			this.emit('newService', {
+			this.emit('newPeer', {
 				remoteInfo,
 				handshake: data.data.handshake,
 				sender: data.sender,
 			})
 		} else if (data.type === 'data') {
-			this.emit('data', { data: data.data as Data, sender: data.sender })
+			if (
+				this.isServer ||
+				this.clientOptions.shouldAcceptDataBeforeAnnounce ||
+				this.isPeerIdKnown(data.sender.id)
+			)
+				this.emit('data', {
+					data: data.data as Data,
+					sender: data.sender,
+				})
 		}
+	}
+
+	private getPeerById(id: string): IPeer | null {
+		return this.knownPeer.find(peer => peer.id === id)
+	}
+
+	private isPeerIdKnown(id: string): boolean {
+		return !!this.getPeerById(id)
 	}
 }
 
