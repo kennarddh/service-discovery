@@ -1,8 +1,6 @@
 import ServiceDiscovery from './ServiceDiscovery.js'
 
-const serviceDiscovery = new ServiceDiscovery<string>({
-	peerAnnounceTimeout: 4000,
-})
+const serviceDiscovery = new ServiceDiscovery<string>()
 
 serviceDiscovery.on('start', ({ socket }) => {
 	const address = socket.address()
