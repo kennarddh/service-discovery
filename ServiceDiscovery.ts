@@ -50,6 +50,7 @@ type IHandshake = Record<string, any>
 interface IOptions {
 	host: string
 	port: number
+	ttl: number
 
 	announceInterval: number
 	shouldAcceptDataBeforeAnnounce: boolean
@@ -71,6 +72,8 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 	private host: string
 	private port: number
 
+	private ttl: number
+
 	private instanceId: string
 
 	private announceIntervalId: NodeJS.Timer
@@ -89,6 +92,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 	public constructor({
 		host = '224.0.0.114',
 		port = 60540,
+		ttl = 1,
 		announceInterval = 2000,
 		shouldAcceptDataBeforeAnnounce = false,
 		serverOptions = {},
@@ -98,6 +102,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 
 		this.host = host
 		this.port = port
+		this.ttl = ttl
 		this.announceInterval = announceInterval
 		this.shouldAcceptDataBeforeAnnounce = shouldAcceptDataBeforeAnnounce
 		this.serverOptions = serverOptions as IServerOptions
@@ -138,7 +143,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 			this.socket.addMembership(this.host)
 
 			this.socket.setMulticastLoopback(true)
-			this.socket.setMulticastTTL(1)
+			this.socket.setMulticastTTL(this.ttl)
 
 			this.announceIntervalId = SetImmediateInterval(() => {
 				this.send({
