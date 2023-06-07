@@ -6,10 +6,11 @@ import { TypedEmitter } from 'tiny-typed-emitter'
 import IsValidJson from './IsValidJson.js'
 import SetImmediateInterval from './SetImmediateInterval.js'
 
-interface IEvents {
+interface IEvents<Data> {
 	start: (data: { socket: dgram.Socket }) => void
 	close: () => void
 	error: (error: Error) => void
+	data: (data: { data: Data; sender: IPeer }) => void
 	newPeer: (data: {
 		remoteInfo: dgram.RemoteInfo
 		handshake: IHandshake
@@ -28,9 +29,7 @@ interface IPeer {
 	type: IInstanceType
 }
 
-interface ISendBase {
-	sender: IPeer
-}
+interface ISendBase {}
 
 interface ISendAnnounce extends ISendBase {
 	type: 'announce'
@@ -49,6 +48,27 @@ interface ISendData<T> extends ISendBase {
 }
 
 type ISend = ISendAnnounce | ISendClose
+
+type IAllSend<Data> = ISendData<Data> | ISend
+
+type IAllSendTypes = IAllSend<unknown>['type']
+
+interface IPacketData<Data> {
+	type: 'data'
+	id: string
+	data: IAllSend<Data>
+	sender: IPeer
+}
+
+interface IPacketAcknowledgement {
+	type: 'acknowledgement'
+	acknowledgedId: string
+	sender: IPeer
+}
+
+type IAllPacket<Data> = IPacketAcknowledgement | IPacketData<Data>
+
+type IAllPacketTypes = IAllPacket<unknown>['type']
 
 type IHandshake = Record<string, any>
 
@@ -70,11 +90,7 @@ interface IServerOptions {}
 
 interface IClientOptions {}
 
-class ServiceDiscovery<Data> extends TypedEmitter<
-	IEvents & {
-		data: (data: { data: Data; sender: IPeer }) => void
-	}
-> {
+class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 	private socket: dgram.Socket
 	private host: string
 	private port: number
@@ -166,10 +182,6 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 					data: {
 						handshake,
 					},
-					sender: {
-						id: this.id,
-						type: this.instanceType,
-					},
 				})
 			}, this.announceInterval)
 		})
@@ -206,16 +218,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 		}
 
 		if (this.isListening && !error) {
-			this.send(
-				{
-					type: 'close',
-					sender: {
-						id: this.id,
-						type: this.instanceType,
-					},
-				},
-				next
-			)
+			this.send({ type: 'close' }, next)
 		} else {
 			next()
 		}
@@ -241,48 +244,62 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 		this.internalIsListening = value
 	}
 
-	private rawSend(message: string, callback?: () => void) {
+	private sendRawPacket(data: IAllPacket<Data>, callback?: () => void) {
 		if (!this.isListening)
 			throw new Error('Socket is not currently listening')
+
+		const message = JSON.stringify(data)
 
 		this.socket.send(message, this.port, this.host, callback)
 	}
 
-	private send(send: ISend, callback?: () => void) {
-		this.rawSend(JSON.stringify(send), callback)
-	}
+	private sendPacket(data: IAllSend<Data>, callback?: () => void) {
+		const packetId = crypto.randomUUID()
 
-	public sendData(data: Data, callback?: () => void) {
-		const sendData: ISendData<Data> = {
+		const sendData: IPacketData<Data> = {
 			type: 'data',
-			data,
+			id: packetId,
+			data: data,
 			sender: {
 				id: this.id,
 				type: this.instanceType,
 			},
 		}
 
-		this.rawSend(JSON.stringify(sendData), callback)
+		this.sendRawPacket(sendData, callback)
+	}
+
+	private send(send: ISend, callback?: () => void) {
+		this.sendPacket(send, callback)
+	}
+
+	public sendData(data: Data, callback?: () => void) {
+		const sendData: ISendData<Data> = {
+			type: 'data',
+			data,
+		}
+
+		this.sendPacket(sendData, callback)
 	}
 
 	private parseMessage(message: Buffer, remoteInfo: dgram.RemoteInfo) {
 		const messageString = message.toString()
 
-		const [isValid, data] = IsValidJson<ISendData<Data> | ISend>(
-			messageString
-		)
+		const [isValid, data] = IsValidJson<IAllPacket<Data>>(messageString)
 
 		if (!isValid) return // Ignore invalid messages
 
 		if (data.sender.id === this.id) return // Ignore this instance message
 
-		if (data.type === 'announce') {
+		if (data.type === 'acknowledgement') return // TODO Will be handled later
+
+		if (data.data.type === 'announce') {
 			if (!this.isPeerIdKnown(data.sender.id)) {
 				this.knownPeer.push(data.sender)
 
 				this.emit('newPeer', {
 					remoteInfo,
-					handshake: data.data.handshake,
+					handshake: data.data.data.handshake,
 					sender: data.sender,
 				})
 			}
@@ -299,7 +316,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 					sender: data.sender,
 				})
 			}, this.peerAnnounceTimeout)
-		} else if (data.type === 'close') {
+		} else if (data.data.type === 'close') {
 			if (!this.isPeerIdKnown(data.sender.id)) return // Peer is not known
 
 			this.removePeer(data.sender.id)
@@ -314,13 +331,13 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 				remoteInfo,
 				sender: data.sender,
 			})
-		} else if (data.type === 'data') {
+		} else if (data.data.type === 'data') {
 			if (
 				this.shouldAcceptDataBeforeAnnounce ||
 				this.isPeerIdKnown(data.sender.id)
 			)
 				this.emit('data', {
-					data: data.data as Data,
+					data: data.data.data as Data,
 					sender: data.sender,
 				})
 		}
