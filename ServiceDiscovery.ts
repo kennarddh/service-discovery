@@ -155,6 +155,14 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 		})
 	}
 
+	public listenClient() {
+		this.listen(false)
+	}
+
+	public listenServer(handshake: IHandshake = {}) {
+		this.listen(true, handshake)
+	}
+
 	public close(error: Error = undefined) {
 		clearInterval(this.announceIntervalId)
 

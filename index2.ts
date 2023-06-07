@@ -41,11 +41,11 @@ serviceDiscovery.on('data', data => {
 })
 
 if (!!process.argv[2]) {
-	serviceDiscovery.listen(true, {
+	serviceDiscovery.listenServer({
 		data: 1,
 	})
 } else {
-	serviceDiscovery.listen(false)
+	serviceDiscovery.listenClient()
 }
 
 setInterval(() => {
