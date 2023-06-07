@@ -304,6 +304,12 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 
 			this.removePeer(data.sender.id)
 
+			if (this.checkPeerTimeouts[data.sender.id]) {
+				clearTimeout(this.checkPeerTimeouts[data.sender.id])
+
+				delete this.checkPeerTimeouts[data.sender.id]
+			}
+
 			this.emit('peerRemoved', {
 				remoteInfo,
 				sender: data.sender,
