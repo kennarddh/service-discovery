@@ -50,17 +50,17 @@ type IHandshake = Record<string, any>
 interface IOptions {
 	host: string
 	port: number
+
+	announceInterval: number
+	shouldAcceptDataBeforeAnnounce: boolean
+
 	clientOptions: Partial<IClientOptions>
 	serverOptions: Partial<IServerOptions>
 }
 
-interface IServerOptions {
-	announceInterval: number
-}
+interface IServerOptions {}
 
-interface IClientOptions {
-	shouldAcceptDataBeforeAnnounce: boolean
-}
+interface IClientOptions {}
 
 class ServiceDiscovery<Data> extends TypedEmitter<
 	IEvents & {
@@ -74,6 +74,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 	private instanceId: string
 
 	private announceIntervalId: NodeJS.Timer
+	private announceInterval: number
 
 	private knownPeer: IPeer[] = []
 
@@ -83,18 +84,22 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 	private clientOptions: IClientOptions
 	private serverOptions: IServerOptions
 
+	private shouldAcceptDataBeforeAnnounce: boolean
+
 	public constructor({
 		host = '224.0.0.114',
 		port = 60540,
-		serverOptions = { announceInterval: 2000 },
-		clientOptions = {
-			shouldAcceptDataBeforeAnnounce: false,
-		},
+		announceInterval = 2000,
+		shouldAcceptDataBeforeAnnounce = false,
+		serverOptions = {},
+		clientOptions = {},
 	}: Partial<IOptions> = {}) {
 		super()
 
 		this.host = host
 		this.port = port
+		this.announceInterval = announceInterval
+		this.shouldAcceptDataBeforeAnnounce = shouldAcceptDataBeforeAnnounce
 		this.serverOptions = serverOptions as IServerOptions
 		this.clientOptions = clientOptions as IClientOptions
 	}
@@ -146,7 +151,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 						type: this.instanceType,
 					},
 				})
-			}, this.serverOptions.announceInterval)
+			}, this.announceInterval)
 		})
 	}
 
@@ -233,8 +238,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 			})
 		} else if (data.type === 'data') {
 			if (
-				this.isServer ||
-				this.clientOptions.shouldAcceptDataBeforeAnnounce ||
+				this.shouldAcceptDataBeforeAnnounce ||
 				this.isPeerIdKnown(data.sender.id)
 			)
 				this.emit('data', {

@@ -1,12 +1,8 @@
 import ServiceDiscovery from './ServiceDiscovery.js'
 
 const serviceDiscovery = new ServiceDiscovery<string>({
-	serverOptions: {
-		announceInterval: 10000,
-	},
-	clientOptions: {
-		shouldAcceptDataBeforeAnnounce: false,
-	},
+	shouldAcceptDataBeforeAnnounce: false,
+	announceInterval: 10000,
 })
 
 serviceDiscovery.on('start', ({ socket }) => {
