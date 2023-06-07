@@ -15,11 +15,12 @@ interface IEvents {
 		handshake: IHandshake
 		sender: IPeer
 	}) => void
+	peerRemoved: (data: { remoteInfo: dgram.RemoteInfo; sender: IPeer }) => void
 }
 
 export enum IInstanceType {
-	Client,
 	Server,
+	Client,
 }
 
 interface IPeer {
@@ -38,12 +39,16 @@ interface ISendAnnounce extends ISendBase {
 	}
 }
 
+interface ISendClose extends ISendBase {
+	type: 'close'
+}
+
 interface ISendData<T> extends ISendBase {
 	type: 'data'
 	data: T
 }
 
-type ISend = ISendAnnounce
+type ISend = ISendAnnounce | ISendClose
 
 type IHandshake = Record<string, any>
 
@@ -169,22 +174,39 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 	}
 
 	public close(error: Error = undefined) {
-		clearInterval(this.announceIntervalId)
+		const next = () => {
+			clearInterval(this.announceIntervalId)
 
-		this.socket.close()
+			if (this.isListening && !error) this.socket.close()
 
-		this.announceIntervalId = null
+			this.announceIntervalId = null
 
-		this.socket = null
+			this.socket = null
 
-		this.isListening = false
-		this.instanceType = null
+			this.isListening = false
+			this.instanceType = null
 
-		this.instanceId = null
+			this.instanceId = null
 
-		if (error) this.emit('error', error)
+			if (error) this.emit('error', error)
 
-		this.emit('close')
+			this.emit('close')
+		}
+
+		if (this.isListening && !error) {
+			this.send(
+				{
+					type: 'close',
+					sender: {
+						id: this.id,
+						type: this.instanceType,
+					},
+				},
+				next
+			)
+		} else {
+			next()
+		}
 	}
 
 	public get id() {
@@ -207,15 +229,18 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 		this.internalIsListening = value
 	}
 
-	private rawSend(message: string) {
-		this.socket.send(message, this.port, this.host)
+	private rawSend(message: string, callback?: () => void) {
+		if (!this.isListening)
+			throw new Error('Socket is not currently listening')
+
+		this.socket.send(message, this.port, this.host, callback)
 	}
 
-	private send(send: ISend) {
-		this.rawSend(JSON.stringify(send))
+	private send(send: ISend, callback?: () => void) {
+		this.rawSend(JSON.stringify(send), callback)
 	}
 
-	public sendData(data: Data) {
+	public sendData(data: Data, callback?: () => void) {
 		const sendData: ISendData<Data> = {
 			type: 'data',
 			data,
@@ -225,7 +250,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 			},
 		}
 
-		this.rawSend(JSON.stringify(sendData))
+		this.rawSend(JSON.stringify(sendData), callback)
 	}
 
 	private parseMessage(message: Buffer, remoteInfo: dgram.RemoteInfo) {
@@ -240,13 +265,22 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 		if (data.sender.id === this.id) return // Ignore this instance message
 
 		if (data.type === 'announce') {
-			if (this.isPeerIdKnown(data.sender.id)) return // Service already known
+			if (this.isPeerIdKnown(data.sender.id)) return // Peer is already known
 
 			this.knownPeer.push(data.sender)
 
 			this.emit('newPeer', {
 				remoteInfo,
 				handshake: data.data.handshake,
+				sender: data.sender,
+			})
+		} else if (data.type === 'close') {
+			if (!this.isPeerIdKnown(data.sender.id)) return // Peer is not known
+
+			this.removePeer(data.sender.id)
+
+			this.emit('peerRemoved', {
+				remoteInfo,
 				sender: data.sender,
 			})
 		} else if (data.type === 'data') {
@@ -267,6 +301,10 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 
 	private isPeerIdKnown(id: string): boolean {
 		return !!this.getPeerById(id)
+	}
+
+	private removePeer(id: string) {
+		this.knownPeer = this.knownPeer.filter(peer => peer.id !== id)
 	}
 }
 

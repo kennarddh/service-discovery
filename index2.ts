@@ -20,11 +20,13 @@ serviceDiscovery.on('start', ({ socket }) => {
 })
 
 serviceDiscovery.on('error', error => {
-	console.error('Server error:\n', error)
+	console.error('Socket error:\n', error)
 })
 
 serviceDiscovery.on('close', () => {
-	console.log('Server closed')
+	console.log('Socket closed')
+
+	clearInterval(dataIntervalId)
 })
 
 serviceDiscovery.on('newPeer', ({ remoteInfo, handshake, sender }) => {
@@ -32,6 +34,14 @@ serviceDiscovery.on('newPeer', ({ remoteInfo, handshake, sender }) => {
 		port: remoteInfo.port,
 		host: remoteInfo.address,
 		handshake,
+		sender,
+	})
+})
+
+serviceDiscovery.on('peerRemoved', ({ remoteInfo, sender }) => {
+	console.log('Peer removed, ', {
+		port: remoteInfo.port,
+		host: remoteInfo.address,
 		sender,
 	})
 })
@@ -48,6 +58,16 @@ if (!!process.argv[2]) {
 	serviceDiscovery.listenClient()
 }
 
-setInterval(() => {
-	serviceDiscovery.sendData('a')
+const dataIntervalId = setInterval(() => {
+	if (serviceDiscovery.isListening) {
+		serviceDiscovery.sendData('a')
+	} else {
+		clearInterval(dataIntervalId)
+	}
 }, 3000)
+
+setTimeout(() => {
+	if (!!process.argv[2]) {
+		serviceDiscovery.close()
+	}
+}, 10000)
