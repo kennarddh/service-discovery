@@ -31,19 +31,25 @@ interface IPeer {
 
 interface ISendBase {}
 
+enum ISendType {
+	Announce,
+	Close,
+	Data,
+}
+
 interface ISendAnnounce extends ISendBase {
-	type: 'announce'
+	type: ISendType.Announce
 	data: {
 		handshake: IHandshake
 	}
 }
 
 interface ISendClose extends ISendBase {
-	type: 'close'
+	type: ISendType.Close
 }
 
 interface ISendData<T> extends ISendBase {
-	type: 'data'
+	type: ISendType.Data
 	data: T
 }
 
@@ -53,15 +59,20 @@ type IAllSend<Data> = ISendData<Data> | ISend
 
 type IAllSendTypes = IAllSend<unknown>['type']
 
+enum IPacketType {
+	Acknowledgement,
+	Data,
+}
+
 interface IPacketData<Data> {
-	type: 'data'
+	type: IPacketType.Data
 	id: string
 	data: IAllSend<Data>
 	sender: IPeer
 }
 
 interface IPacketAcknowledgement {
-	type: 'acknowledgement'
+	type: IPacketType.Acknowledgement
 	acknowledgedId: string
 	sender: IPeer
 }
@@ -178,7 +189,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 
 			this.announceIntervalId = SetImmediateInterval(() => {
 				this.send({
-					type: 'announce',
+					type: ISendType.Announce,
 					data: {
 						handshake,
 					},
@@ -218,7 +229,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 		}
 
 		if (this.isListening && !error) {
-			this.send({ type: 'close' }, next)
+			this.send({ type: ISendType.Close }, next)
 		} else {
 			next()
 		}
@@ -257,7 +268,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 		const packetId = crypto.randomUUID()
 
 		const sendData: IPacketData<Data> = {
-			type: 'data',
+			type: IPacketType.Data,
 			id: packetId,
 			data: data,
 			sender: {
@@ -275,7 +286,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 
 	public sendData(data: Data, callback?: () => void) {
 		const sendData: ISendData<Data> = {
-			type: 'data',
+			type: ISendType.Data,
 			data,
 		}
 
@@ -291,55 +302,57 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 
 		if (data.sender.id === this.id) return // Ignore this instance message
 
-		if (data.type === 'acknowledgement') return // TODO Will be handled later
+		if (data.type === IPacketType.Acknowledgement)
+			return // TODO Will be handled later
+		else {
+			if (data.data.type === ISendType.Announce) {
+				if (!this.isPeerIdKnown(data.sender.id)) {
+					this.knownPeer.push(data.sender)
 
-		if (data.data.type === 'announce') {
-			if (!this.isPeerIdKnown(data.sender.id)) {
-				this.knownPeer.push(data.sender)
+					this.emit('newPeer', {
+						remoteInfo,
+						handshake: data.data.data.handshake,
+						sender: data.sender,
+					})
+				}
 
-				this.emit('newPeer', {
-					remoteInfo,
-					handshake: data.data.data.handshake,
-					sender: data.sender,
-				})
-			}
+				if (this.checkPeerTimeouts[data.sender.id]) {
+					clearTimeout(this.checkPeerTimeouts[data.sender.id])
+				}
 
-			if (this.checkPeerTimeouts[data.sender.id]) {
-				clearTimeout(this.checkPeerTimeouts[data.sender.id])
-			}
+				this.checkPeerTimeouts[data.sender.id] = setTimeout(() => {
+					this.removePeer(data.sender.id)
 
-			this.checkPeerTimeouts[data.sender.id] = setTimeout(() => {
+					this.emit('peerRemoved', {
+						remoteInfo,
+						sender: data.sender,
+					})
+				}, this.peerAnnounceTimeout)
+			} else if (data.data.type === ISendType.Close) {
+				if (!this.isPeerIdKnown(data.sender.id)) return // Peer is not known
+
 				this.removePeer(data.sender.id)
+
+				if (this.checkPeerTimeouts[data.sender.id]) {
+					clearTimeout(this.checkPeerTimeouts[data.sender.id])
+
+					delete this.checkPeerTimeouts[data.sender.id]
+				}
 
 				this.emit('peerRemoved', {
 					remoteInfo,
 					sender: data.sender,
 				})
-			}, this.peerAnnounceTimeout)
-		} else if (data.data.type === 'close') {
-			if (!this.isPeerIdKnown(data.sender.id)) return // Peer is not known
-
-			this.removePeer(data.sender.id)
-
-			if (this.checkPeerTimeouts[data.sender.id]) {
-				clearTimeout(this.checkPeerTimeouts[data.sender.id])
-
-				delete this.checkPeerTimeouts[data.sender.id]
+			} else if (data.data.type === ISendType.Data) {
+				if (
+					this.shouldAcceptDataBeforeAnnounce ||
+					this.isPeerIdKnown(data.sender.id)
+				)
+					this.emit('data', {
+						data: data.data.data as Data,
+						sender: data.sender,
+					})
 			}
-
-			this.emit('peerRemoved', {
-				remoteInfo,
-				sender: data.sender,
-			})
-		} else if (data.data.type === 'data') {
-			if (
-				this.shouldAcceptDataBeforeAnnounce ||
-				this.isPeerIdKnown(data.sender.id)
-			)
-				this.emit('data', {
-					data: data.data.data as Data,
-					sender: data.sender,
-				})
 		}
 	}
 
