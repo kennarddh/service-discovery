@@ -147,9 +147,6 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 		this.clientOptions = clientOptions as IClientOptions
 	}
 
-	public listen(isServer: true, handshake?: IHandshake): void
-	public listen(isServer: false): void
-
 	public listen(isServer: boolean, handshake: IHandshake = {}) {
 		this.isListening = true
 		this.instanceType = isServer
@@ -194,8 +191,8 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 		})
 	}
 
-	public listenClient() {
-		this.listen(false)
+	public listenClient(handshake: IHandshake = {}) {
+		this.listen(false, handshake)
 	}
 
 	public listenServer(handshake: IHandshake = {}) {

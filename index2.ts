@@ -52,12 +52,14 @@ if (!!process.argv[2]) {
 		data: 1,
 	})
 } else {
-	serviceDiscovery.listenClient()
+	serviceDiscovery.listenClient({
+		data: 0,
+	})
 }
 
 const dataIntervalId = setInterval(() => {
 	if (serviceDiscovery.isListening) {
-		serviceDiscovery.sendData('a')
+		// serviceDiscovery.sendData('a')
 	} else {
 		clearInterval(dataIntervalId)
 	}
