@@ -188,6 +188,8 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 
 			this.instanceId = null
 
+			this.knownPeer = []
+
 			if (error) this.emit('error', error)
 
 			this.emit('close')
