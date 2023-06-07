@@ -2,12 +2,16 @@ import ServiceDiscovery from './ServiceDiscovery.js'
 
 const serviceDiscovery = new ServiceDiscovery<string>()
 
-serviceDiscovery.on('start', ({ socket, isServer, isClient }) => {
+serviceDiscovery.on('start', ({ socket }) => {
 	const address = socket.address()
 
 	console.log(
 		`Listening ${address.address}:${address.port} as ${
-			isServer ? 'server' : isClient ? 'client' : ''
+			serviceDiscovery.isServer
+				? 'server'
+				: serviceDiscovery.isClient
+				? 'client'
+				: ''
 		}`
 	)
 })

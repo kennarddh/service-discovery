@@ -7,11 +7,7 @@ import IsValidJson from './IsValidJson.js'
 import SetImmediateInterval from './SetImmediateInterval.js'
 
 interface IEvents {
-	start: (data: {
-		socket: dgram.Socket
-		isServer: boolean
-		isClient: boolean
-	}) => void
+	start: (data: { socket: dgram.Socket }) => void
 	close: () => void
 	error: (error: Error) => void
 	newService: (data: {
@@ -61,9 +57,9 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 
 	private knownServices: string[] = []
 
-	private isServer: boolean
-	private isClient: boolean
-	private isListening: boolean
+	private internalIsServer: boolean
+	private internalIsClient: boolean
+	private internalIsListening: boolean
 
 	public constructor({
 		host = '224.0.0.114',
@@ -101,8 +97,6 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 		this.socket.on('listening', () => {
 			this.emit('start', {
 				socket: this.socket,
-				isServer: this.isServer,
-				isClient: this.isClient,
 			})
 		})
 
@@ -152,6 +146,30 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 
 	public get id() {
 		return this.instanceId
+	}
+
+	public get isServer(): boolean {
+		return this.internalIsServer
+	}
+
+	private set isServer(value) {
+		this.internalIsServer = value
+	}
+
+	public get isClient(): boolean {
+		return this.internalIsClient
+	}
+
+	private set isClient(value) {
+		this.internalIsClient = value
+	}
+
+	public get isListening(): boolean {
+		return this.internalIsListening
+	}
+
+	private set isListening(value) {
+		this.internalIsListening = value
 	}
 
 	private rawSend(message: string) {
