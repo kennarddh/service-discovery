@@ -25,7 +25,7 @@ export enum IInstanceType {
 }
 
 interface IPeer {
-	id: string
+	id: crypto.UUID
 	type: IInstanceType
 }
 
@@ -67,12 +67,14 @@ interface IPacketData<Data> {
 	id: string
 	data: IAllSend<Data>
 	sender: IPeer
+	targetIds: crypto.UUID[] | '*'
 }
 
 interface IPacketAcknowledgement {
 	type: IPacketType.Acknowledgement
 	acknowledgedId: string
 	sender: IPeer
+	targetIds: string[]
 }
 
 type IAllPacket<Data> = IPacketAcknowledgement | IPacketData<Data>
@@ -104,7 +106,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 
 	private ttl: number
 
-	private instanceId: string
+	private instanceId: crypto.UUID
 
 	private announceIntervalId: NodeJS.Timer
 	private announceInterval: number
@@ -268,6 +270,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 				id: this.id,
 				type: this.instanceType,
 			},
+			targetIds: '*',
 		}
 
 		this.sendRawPacket(sendData, callback)
@@ -294,6 +297,9 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 		if (!isValid) return // Ignore invalid messages
 
 		if (data.sender.id === this.id) return // Ignore this instance message
+
+		if (!(data.targetIds === '*' || data.targetIds.includes(this.id)))
+			return // Ignore message if not targeted
 
 		if (data.type === IPacketType.Acknowledgement)
 			return // TODO Will be handled later
