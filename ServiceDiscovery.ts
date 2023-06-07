@@ -52,21 +52,21 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 
 	private instaceId: string
 
-	private announceIntervalDelay: number
-	private announceInterval: NodeJS.Timer
+	private announceInterval: number
+	private announceIntervalId: NodeJS.Timer
 
 	private knownServices: string[] = []
 
 	public constructor({
 		host = '224.0.0.114',
 		port = 60540,
-		announceIntervalDelay = 2000,
+		announceInterval = 2000,
 	} = {}) {
 		super()
 
 		this.host = host
 		this.port = port
-		this.announceIntervalDelay = announceIntervalDelay
+		this.announceInterval = announceInterval
 	}
 
 	public listen(handshake: IHandshake = {}) {
@@ -95,7 +95,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 
 			this.instaceId = crypto.randomUUID()
 
-			SetImmediateInterval(() => {
+			this.announceIntervalId = SetImmediateInterval(() => {
 				this.send({
 					type: 'announce',
 					data: {
@@ -105,12 +105,12 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 						id: this.id,
 					},
 				})
-			}, this.announceIntervalDelay)
+			}, this.announceInterval)
 		})
 	}
 
 	public close(error: Error = undefined) {
-		clearInterval(this.announceInterval)
+		clearInterval(this.announceIntervalId)
 
 		this.socket.close()
 
