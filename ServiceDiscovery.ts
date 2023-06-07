@@ -4,6 +4,7 @@ import crypto from 'node:crypto'
 import { TypedEmitter } from 'tiny-typed-emitter'
 
 import IsValidJson from './IsValidJson.js'
+import SetImmediateInterval from './SetImmediateInterval.js'
 
 interface IEvents {
 	start: (socket: dgram.Socket) => void
@@ -94,17 +95,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<
 
 			this.instaceId = crypto.randomUUID()
 
-			this.send({
-				type: 'announce',
-				data: {
-					handshake,
-				},
-				sender: {
-					id: this.id,
-				},
-			})
-
-			this.announceInterval = setInterval(() => {
+			SetImmediateInterval(() => {
 				this.send({
 					type: 'announce',
 					data: {
