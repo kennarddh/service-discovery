@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import ServiceDiscovery from './ServiceDiscovery.js'
 
 const serviceDiscovery = new ServiceDiscovery<string>()
@@ -63,10 +64,20 @@ const dataIntervalId = setInterval(() => {
 	} else {
 		clearInterval(dataIntervalId)
 	}
-}, 3000)
+}, 5000)
+
+setTimeout(() => {
+	serviceDiscovery.sendData('a')
+}, 5000)
+
+// const largeText = readFileSync('./largeText60000.txt').toString('utf-8')
 
 // setTimeout(() => {
-// 	if (!!process.argv[2]) {
-// 		serviceDiscovery.close()
-// 	}
-// }, 10000)
+// 	serviceDiscovery.sendData(largeText, () => console.log('all peer received'))
+// }, 5000)
+
+setTimeout(() => {
+	if (!!process.argv[2]) {
+		serviceDiscovery.close()
+	}
+}, 10000)
