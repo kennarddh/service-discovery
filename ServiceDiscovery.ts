@@ -126,6 +126,8 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 	private internalIsListening: boolean
 	private instanceType: IInstanceType
 
+	private isClosing: boolean
+
 	private clientOptions: IClientOptions
 	private serverOptions: IServerOptions
 
@@ -213,12 +215,13 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 			this.socket.setMulticastTTL(this.ttl)
 
 			this.announceIntervalId = SetImmediateInterval(() => {
-				this.send({
-					type: ISendType.Announce,
-					data: {
-						handshake,
-					},
-				})
+				if (!this.isClosing)
+					this.send({
+						type: ISendType.Announce,
+						data: {
+							handshake,
+						},
+					})
 			}, this.announceInterval)
 		})
 	}
@@ -264,10 +267,14 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 
 			this.knownPacket = {}
 
+			this.isClosing = false
+
 			if (error) this.emit('error', error)
 
 			this.emit('close')
 		}
+
+		this.isClosing = true
 
 		clearInterval(this.announceIntervalId)
 
@@ -428,6 +435,8 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 				data.sender
 			)
 		} else {
+			if (this.isClosing) return
+
 			if (data.data.type === ISendType.Announce) {
 				if (!this.isPeerIdKnown(data.sender.id)) {
 					this.knownPeer.push(data.sender)
