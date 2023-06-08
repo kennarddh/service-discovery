@@ -7,13 +7,7 @@ serviceDiscovery.on('start', ({ socket }) => {
 	const address = socket.address()
 
 	console.log(
-		`Listening ${address.address}:${address.port} as ${
-			serviceDiscovery.isServer
-				? 'server'
-				: serviceDiscovery.isClient
-				? 'client'
-				: ''
-		}, Id: ${serviceDiscovery.id}`
+		`Listening ${address.address}:${address.port}, Id: ${serviceDiscovery.id}`
 	)
 })
 
@@ -49,11 +43,11 @@ serviceDiscovery.on('data', data => {
 })
 
 if (!!process.argv[2]) {
-	serviceDiscovery.listenServer({
+	serviceDiscovery.listen({
 		data: 1,
 	})
 } else {
-	serviceDiscovery.listenClient({
+	serviceDiscovery.listen({
 		data: 0,
 	})
 }

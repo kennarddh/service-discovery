@@ -23,14 +23,8 @@ interface IInternalEvents {
 	acknowledgementReceivedAll: (data: { packetId: UUID }) => void
 }
 
-export enum IInstanceType {
-	Server,
-	Client,
-}
-
 interface IPeer {
 	id: crypto.UUID
-	type: IInstanceType
 }
 
 interface ISendBase {}
@@ -97,14 +91,7 @@ interface IOptions {
 
 	acknowledgementTimeout: number
 	maxRetry: number
-
-	clientOptions: Partial<IClientOptions>
-	serverOptions: Partial<IServerOptions>
 }
-
-interface IServerOptions {}
-
-interface IClientOptions {}
 
 class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 	private socket: dgram.Socket
@@ -124,12 +111,9 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 	private knownPeer: IPeer[] = []
 
 	private internalIsListening: boolean
-	private instanceType: IInstanceType
 
 	private isClosing: boolean
 
-	private clientOptions: IClientOptions
-	private serverOptions: IServerOptions
 
 	private shouldAcceptDataBeforeAnnounce: boolean
 
@@ -158,8 +142,6 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 		shouldAcceptDataBeforeAnnounce = false,
 		acknowledgementTimeout = 3000,
 		maxRetry = 3,
-		serverOptions = {},
-		clientOptions = {},
 	}: Partial<IOptions> = {}) {
 		super()
 
@@ -174,18 +156,12 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 
 		this.acknowledgementTimeout = acknowledgementTimeout
 		this.maxRetry = maxRetry
-
-		this.serverOptions = serverOptions as IServerOptions
-		this.clientOptions = clientOptions as IClientOptions
 	}
 
-	public listen(isServer: boolean, handshake: IHandshake = {}) {
+	public listen(handshake: IHandshake = {}) {
 		if (this.isListening) throw new Error('Socket already listening')
 
 		this.isListening = true
-		this.instanceType = isServer
-			? IInstanceType.Server
-			: IInstanceType.Client
 
 		this.instanceId = crypto.randomUUID()
 
@@ -226,13 +202,6 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 		})
 	}
 
-	public listenClient(handshake: IHandshake = {}) {
-		this.listen(false, handshake)
-	}
-
-	public listenServer(handshake: IHandshake = {}) {
-		this.listen(true, handshake)
-	}
 
 	public close(error: Error = undefined) {
 		if (!this.isListening) throw new Error('Socket is not listening')
@@ -255,7 +224,6 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 			this.socket = null
 
 			this.isListening = false
-			this.instanceType = null
 
 			this.instanceId = null
 
@@ -291,14 +259,6 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 		return this.instanceId
 	}
 
-	public get isServer(): boolean {
-		return this.instanceType === IInstanceType.Server
-	}
-
-	public get isClient(): boolean {
-		return this.instanceType === IInstanceType.Client
-	}
-
 	public get isListening(): boolean {
 		return this.internalIsListening
 	}
@@ -330,7 +290,6 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 			data: data,
 			sender: {
 				id: this.id,
-				type: this.instanceType,
 			},
 			targetIds,
 		}
@@ -411,7 +370,6 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 			acknowledgedId: packetId,
 			sender: {
 				id: this.id,
-				type: this.instanceType,
 			},
 		})
 	}
