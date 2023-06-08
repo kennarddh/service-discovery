@@ -78,7 +78,7 @@ interface IPacketAcknowledgement {
 	type: IPacketType.Acknowledgement
 	acknowledgedId: UUID
 	sender: IPeer
-	targetIds: string[]
+	targetIds: UUID[]
 }
 
 type IAllPacket<Data> = IPacketAcknowledgement | IPacketData<Data>
