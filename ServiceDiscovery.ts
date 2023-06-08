@@ -178,6 +178,8 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 	}
 
 	public listen(isServer: boolean, handshake: IHandshake = {}) {
+		if (this.isListening) throw new Error('Socket already listening')
+
 		this.isListening = true
 		this.instanceType = isServer
 			? IInstanceType.Server
@@ -230,6 +232,8 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 	}
 
 	public close(error: Error = undefined) {
+		if (!this.isListening) throw new Error('Socket is not listening')
+
 		const next = () => {
 			if (this.isListening && !error) this.socket.close()
 
