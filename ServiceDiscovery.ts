@@ -114,7 +114,6 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 
 	private isClosing: boolean
 
-
 	private shouldAcceptDataBeforeAnnounce: boolean
 
 	private acknowledgementTimeout: number
@@ -202,45 +201,8 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 		})
 	}
 
-
-	public close(error: Error = undefined) {
+	public async close(error: Error = undefined) {
 		if (!this.isListening) throw new Error('Socket is not listening')
-
-		const next = () => {
-			if (this.isListening && !error) this.socket.close()
-
-			for (const timeout of Object.values(this.checkPeerTimeouts)) {
-				clearTimeout(timeout)
-			}
-
-			this.checkPeerTimeouts = {}
-
-			for (const pending of Object.values(this.pendingAcknowledgement)) {
-				clearInterval(pending.intervalId)
-			}
-
-			this.pendingAcknowledgement = {}
-
-			this.socket = null
-
-			this.isListening = false
-
-			this.instanceId = null
-
-			this.knownPeer = []
-
-			for (const packet of Object.values(this.knownPacket)) {
-				clearTimeout(packet.timeoutId)
-			}
-
-			this.knownPacket = {}
-
-			this.isClosing = false
-
-			if (error) this.emit('error', error)
-
-			this.emit('close')
-		}
 
 		this.isClosing = true
 
@@ -248,11 +210,43 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 
 		this.announceIntervalId = null
 
-		if (this.isListening && !error) {
-			this.send({ type: ISendType.Close }, next)
-		} else {
-			next()
+		if (!error) {
+			await this.send({ type: ISendType.Close })
+
+			await new Promise<void>(resolve => this.socket.close(resolve))
 		}
+
+		for (const timeout of Object.values(this.checkPeerTimeouts)) {
+			clearTimeout(timeout)
+		}
+
+		this.checkPeerTimeouts = {}
+
+		for (const pending of Object.values(this.pendingAcknowledgement)) {
+			clearInterval(pending.intervalId)
+		}
+
+		this.pendingAcknowledgement = {}
+
+		this.socket = null
+
+		this.isListening = false
+
+		this.instanceId = null
+
+		this.knownPeer = []
+
+		for (const packet of Object.values(this.knownPacket)) {
+			clearTimeout(packet.timeoutId)
+		}
+
+		this.knownPacket = {}
+
+		this.isClosing = false
+
+		if (error) this.emit('error', error)
+
+		this.emit('close')
 	}
 
 	public get id() {
@@ -267,100 +261,106 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 		this.internalIsListening = value
 	}
 
-	private sendRawPacket(data: IAllPacket<Data>, callback?: () => void) {
-		if (!this.isListening)
-			throw new Error('Socket is not currently listening')
+	private sendRawPacket(data: IAllPacket<Data>) {
+		return new Promise<void>(resolve => {
+			if (!this.isListening)
+				throw new Error('Socket is not currently listening')
 
-		const message = JSON.stringify(data)
+			const message = JSON.stringify(data)
 
-		this.socket.send(message, this.port, this.host, callback)
+			this.socket.send(message, this.port, this.host, () => resolve())
+		})
 	}
 
 	private sendPacket(
 		data: IAllSend<Data>,
 		targetIds: UUID[] | '*',
-		callback?: () => void,
 		sendAcknowledgement: boolean = true
 	) {
-		const packetId = crypto.randomUUID()
+		return new Promise<void>(resolve => {
+			const packetId = crypto.randomUUID()
 
-		const sendData: IPacketData<Data> = {
-			type: IPacketType.Data,
-			id: packetId,
-			data: data,
-			sender: {
-				id: this.id,
-			},
-			targetIds,
-		}
-
-		if (sendAcknowledgement) {
-			this.pendingAcknowledgement[packetId] = {
-				pendingTarget: this.knownPeer.map(peer => peer.id),
-				intervalId: setInterval(() => {
-					this.pendingAcknowledgement[packetId].remainingRetry -= 1
-
-					this.sendRawPacket({
-						...sendData,
-						targetIds:
-							this.pendingAcknowledgement[packetId].pendingTarget,
-					})
-
-					if (
-						this.pendingAcknowledgement[packetId].remainingRetry ===
-						0
-					) {
-						clearInterval(
-							this.pendingAcknowledgement[packetId].intervalId
-						)
-
-						this.internalEvent.off(
-							'acknowledgementReceivedAll',
-							onAckReceivedAll
-						)
-
-						callback?.()
-
-						delete this.pendingAcknowledgement[packetId]
-					}
-				}, this.acknowledgementTimeout),
-				remainingRetry: this.maxRetry,
+			const sendData: IPacketData<Data> = {
+				type: IPacketType.Data,
+				id: packetId,
+				data: data,
+				sender: {
+					id: this.id,
+				},
+				targetIds,
 			}
 
-			const onAckReceivedAll = ({
-				packetId: receivedPacketId,
-			}: {
-				packetId: UUID
-			}) => {
-				if (receivedPacketId !== packetId) return
+			if (sendAcknowledgement) {
+				this.pendingAcknowledgement[packetId] = {
+					pendingTarget: this.knownPeer.map(peer => peer.id),
+					intervalId: setInterval(() => {
+						this.pendingAcknowledgement[
+							packetId
+						].remainingRetry -= 1
 
-				this.internalEvent.off(
+						this.sendRawPacket({
+							...sendData,
+							targetIds:
+								this.pendingAcknowledgement[packetId]
+									.pendingTarget,
+						})
+
+						if (
+							this.pendingAcknowledgement[packetId]
+								.remainingRetry === 0
+						) {
+							clearInterval(
+								this.pendingAcknowledgement[packetId].intervalId
+							)
+
+							this.internalEvent.off(
+								'acknowledgementReceivedAll',
+								onAckReceivedAll
+							)
+
+							resolve()
+
+							delete this.pendingAcknowledgement[packetId]
+						}
+					}, this.acknowledgementTimeout),
+					remainingRetry: this.maxRetry,
+				}
+
+				const onAckReceivedAll = ({
+					packetId: receivedPacketId,
+				}: {
+					packetId: UUID
+				}) => {
+					if (receivedPacketId !== packetId) return
+
+					this.internalEvent.off(
+						'acknowledgementReceivedAll',
+						onAckReceivedAll
+					)
+
+					resolve()
+				}
+
+				this.internalEvent.on(
 					'acknowledgementReceivedAll',
 					onAckReceivedAll
 				)
-
-				callback?.()
-			}
-
-			this.internalEvent.on(
-				'acknowledgementReceivedAll',
-				onAckReceivedAll
-			)
-			this.sendRawPacket(sendData)
-		} else this.sendRawPacket(sendData, callback)
+				this.sendRawPacket(sendData)
+			} else this.sendRawPacket(sendData).then(() => resolve())
+		})
 	}
 
-	private send(send: ISend, callback?: () => void) {
-		this.sendPacket(send, '*', callback, send.type !== ISendType.Announce)
+	private async send(send: ISend) {
+		await this.sendPacket(send, '*', send.type !== ISendType.Announce)
 	}
 
-	public sendData(data: Data, callback?: () => void) {
+	public async sendData(data: Data) {
 		const sendData: ISendData<Data> = {
 			type: ISendType.Data,
 			data,
 		}
 
-		this.sendPacket(sendData, '*', callback)
+		await this.sendPacket(sendData, '*')
 	}
 
 	private sendAcknowledgement(packetId: UUID, sender: IPeer) {

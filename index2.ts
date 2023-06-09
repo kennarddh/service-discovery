@@ -70,8 +70,8 @@ setTimeout(() => {
 // 	serviceDiscovery.sendData(largeText, () => console.log('all peer received'))
 // }, 5000)
 
-setTimeout(() => {
+setTimeout(async () => {
 	if (!!process.argv[2]) {
-		serviceDiscovery.close()
+		await serviceDiscovery.close()
 	}
 }, 10000)
