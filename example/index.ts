@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import ServiceDiscovery from './ServiceDiscovery.js'
+import ServiceDiscovery from '../src/ServiceDiscovery.js'
 
 const serviceDiscovery = new ServiceDiscovery<string>()
 

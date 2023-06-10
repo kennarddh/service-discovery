@@ -10,8 +10,7 @@
 		"typescript": "^5.1.3"
 	},
 	"scripts": {
-		"start": "ts-node-esm index.ts",
-		"test": "ts-node-esm index2.ts"
+		"start": "ts-node-esm ./example/index.ts"
 	},
 	"keywords": [
 		"typescript"

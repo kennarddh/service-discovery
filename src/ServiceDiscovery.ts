@@ -3,8 +3,8 @@ import crypto, { UUID } from 'node:crypto'
 
 import { TypedEmitter } from 'tiny-typed-emitter'
 
-import IsValidJson from './IsValidJson.js'
-import SetImmediateInterval from './SetImmediateInterval.js'
+import IsValidJson from './Utils/IsValidJson.js'
+import SetImmediateInterval from './Utils/SetImmediateInterval.js'
 
 interface IEvents<Data> {
 	start: (data: { socket: dgram.Socket }) => void

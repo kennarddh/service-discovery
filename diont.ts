@@ -1,5 +1,5 @@
 import Diont from 'diont'
-import GetFreePort from './GetFreePort.js'
+import GetFreePort from './src/Utils/GetFreePort.js'
 import net from 'net'
 
 import * as readline from 'node:readline/promises'
