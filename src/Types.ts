@@ -2,6 +2,8 @@ import dgram from 'dgram'
 
 import { UUID } from 'crypto'
 
+import BaseParser from './Parser/BaseParser'
+
 export interface IEvents<Data> {
 	start: (data: { socket: dgram.Socket }) => void
 	close: () => void
@@ -56,48 +58,52 @@ export enum IPacketType {
 	Data,
 }
 
+export type ITargetIds = UUID[] | '*'
+
 export interface IPacketData<Data> {
 	type: IPacketType.Data
 	id: UUID
 	body: IAllPacketBody<Data>
 	sender: IPeer
-	targetIds: UUID[] | '*'
+	targetIds: ITargetIds
 }
 
 export interface IPacketAcknowledgement {
 	type: IPacketType.Acknowledgement
 	acknowledgedId: UUID
 	sender: IPeer
-	targetIds: UUID[]
+	targetIds: ITargetIds
 }
 
 export type IAllPacket<Data> = IPacketAcknowledgement | IPacketData<Data>
 
 export type IHandshake = Record<string, any>
 
-export interface IOptions {
-	host: string
-	port: number
-	ttl: number
+export interface IOptions<Data> {
+	host?: string
+	port?: number
+	ttl?: number
 
-	announceInterval: number
-	shouldAcceptDataBeforeAnnounce: boolean
+	announceInterval?: number
+	shouldAcceptDataBeforeAnnounce?: boolean
 
-	peerAnnounceTimeout: number
+	peerAnnounceTimeout?: number
 
-	acknowledgementTimeout: number
-	maxRetry: number
+	acknowledgementTimeout?: number
+	maxRetry?: number
+
+	parser: BaseParser<Data>
 }
 
-export type ICheckPeerTimeouts=Record<string, NodeJS.Timer>
+export type ICheckPeerTimeouts = Record<string, NodeJS.Timer>
 
-export type IPendingAcknowledgements=Record<
-UUID,
-{
-    intervalId: NodeJS.Timer
-    pendingTarget: UUID[]
-    remainingRetry: number
-}
+export type IPendingAcknowledgements = Record<
+	UUID,
+	{
+		intervalId: NodeJS.Timer
+		pendingTarget: UUID[]
+		remainingRetry: number
+	}
 >
 
-export type IKnownPackets=Record<UUID, { timeoutId: NodeJS.Timer }>
+export type IKnownPackets = Record<UUID, { timeoutId: NodeJS.Timer }>

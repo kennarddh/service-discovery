@@ -3,8 +3,10 @@ import crypto, { UUID } from 'node:crypto'
 
 import { TypedEmitter } from 'tiny-typed-emitter'
 
-import IsValidJson from './Utils/IsValidJson.js'
 import SetImmediateInterval from './Utils/SetImmediateInterval.js'
+
+import IParser from './Parser/Types.js'
+import JSONParser from './Parser/JSONParser.js'
 
 import {
 	IAllPacket,
@@ -56,16 +58,21 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 
 	private internalEvent: TypedEmitter<IInternalEvents> = new TypedEmitter()
 
-	public constructor({
-		host = '224.0.0.114',
-		port = 60540,
-		ttl = 1,
-		announceInterval = 2000,
-		peerAnnounceTimeout = 4000,
-		shouldAcceptDataBeforeAnnounce = false,
-		acknowledgementTimeout = 3000,
-		maxRetry = 3,
-	}: Partial<IOptions> = {}) {
+	private parser: IParser<Data>
+
+	public constructor(
+		{
+			host = '224.0.0.114',
+			port = 60540,
+			ttl = 1,
+			announceInterval = 2000,
+			peerAnnounceTimeout = 4000,
+			shouldAcceptDataBeforeAnnounce = false,
+			acknowledgementTimeout = 3000,
+			maxRetry = 3,
+			parser,
+		}: IOptions<Data>
+	) {
 		super()
 
 		this.host = host
@@ -79,6 +86,8 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 
 		this.acknowledgementTimeout = acknowledgementTimeout
 		this.maxRetry = maxRetry
+
+		this.parser = parser
 	}
 
 	public listen(handshake: IHandshake = {}) {
@@ -190,7 +199,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 			if (!this.isListening)
 				throw new Error('Socket is not currently listening')
 
-			const message = JSON.stringify(data)
+			const message = this.parser.serializePacket(data)
 
 			this.socket.send(message, this.port, this.host, () => resolve())
 		})
@@ -300,9 +309,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 	}
 
 	private parseMessage(message: Buffer, remoteInfo: dgram.RemoteInfo) {
-		const messageString = message.toString()
-
-		const [isValid, data] = IsValidJson<IAllPacket<Data>>(messageString)
+		const [isValid, data] = this.parser.isValidPacket(message)
 
 		if (!isValid) return // Ignore invalid messages
 
