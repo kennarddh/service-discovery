@@ -6,92 +6,23 @@ import { TypedEmitter } from 'tiny-typed-emitter'
 import IsValidJson from './Utils/IsValidJson.js'
 import SetImmediateInterval from './Utils/SetImmediateInterval.js'
 
-interface IEvents<Data> {
-	start: (data: { socket: dgram.Socket }) => void
-	close: () => void
-	error: (error: Error) => void
-	data: (data: { data: Data; sender: IPeer }) => void
-	newPeer: (data: {
-		remoteInfo: dgram.RemoteInfo
-		handshake: IHandshake
-		sender: IPeer
-	}) => void
-	peerRemoved: (data: { remoteInfo: dgram.RemoteInfo; sender: IPeer }) => void
-}
-
-interface IInternalEvents {
-	acknowledgementReceivedAll: (data: { packetId: UUID }) => void
-}
-
-interface IPeer {
-	id: crypto.UUID
-}
-
-interface ISendBase {}
-
-enum ISendType {
-	Announce,
-	Close,
-	Data,
-}
-
-interface ISendAnnounce extends ISendBase {
-	type: ISendType.Announce
-	data: {
-		handshake: IHandshake
-	}
-}
-
-interface ISendClose extends ISendBase {
-	type: ISendType.Close
-}
-
-interface ISendData<T> extends ISendBase {
-	type: ISendType.Data
-	data: T
-}
-
-type ISend = ISendAnnounce | ISendClose
-
-type IAllSend<Data> = ISendData<Data> | ISend
-
-enum IPacketType {
-	Acknowledgement,
-	Data,
-}
-
-interface IPacketData<Data> {
-	type: IPacketType.Data
-	id: UUID
-	data: IAllSend<Data>
-	sender: IPeer
-	targetIds: UUID[] | '*'
-}
-
-interface IPacketAcknowledgement {
-	type: IPacketType.Acknowledgement
-	acknowledgedId: UUID
-	sender: IPeer
-	targetIds: UUID[]
-}
-
-type IAllPacket<Data> = IPacketAcknowledgement | IPacketData<Data>
-
-type IHandshake = Record<string, any>
-
-interface IOptions {
-	host: string
-	port: number
-	ttl: number
-
-	announceInterval: number
-	shouldAcceptDataBeforeAnnounce: boolean
-
-	peerAnnounceTimeout: number
-
-	acknowledgementTimeout: number
-	maxRetry: number
-}
+import {
+	IAllPacket,
+	IAllPacketBody,
+	ICheckPeerTimeouts,
+	IEvents,
+	IHandshake,
+	IInternalEvents,
+	IKnownPackets,
+	IOptions,
+	IPacketBody,
+	IPacketBodyData,
+	IPacketBodyType,
+	IPacketData,
+	IPacketType,
+	IPeer,
+	IPendingAcknowledgements,
+} from './Types.js'
 
 class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 	private socket: dgram.Socket
@@ -105,10 +36,10 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 	private announceIntervalId: NodeJS.Timer
 	private announceInterval: number
 
-	private checkPeerTimeouts: Record<string, NodeJS.Timer> = {}
+	private checkPeerTimeouts: ICheckPeerTimeouts = {}
 	private peerAnnounceTimeout: number
 
-	private knownPeer: IPeer[] = []
+	private knownPeers: IPeer[] = []
 
 	private internalIsListening: boolean
 
@@ -117,16 +48,9 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 	private shouldAcceptDataBeforeAnnounce: boolean
 
 	private acknowledgementTimeout: number
-	private pendingAcknowledgement: Record<
-		UUID,
-		{
-			intervalId: NodeJS.Timer
-			pendingTarget: UUID[]
-			remainingRetry: number
-		}
-	> = {}
+	private pendingAcknowledgements: IPendingAcknowledgements = {}
 
-	private knownPacket: Record<UUID, { timeoutId: NodeJS.Timer }> = {}
+	private knownPackets: IKnownPackets = {}
 
 	private maxRetry: number
 
@@ -192,7 +116,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 			this.announceIntervalId = SetImmediateInterval(() => {
 				if (!this.isClosing)
 					this.send({
-						type: ISendType.Announce,
+						type: IPacketBodyType.Announce,
 						data: {
 							handshake,
 						},
@@ -211,7 +135,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 		this.announceIntervalId = null
 
 		if (!error) {
-			await this.send({ type: ISendType.Close })
+			await this.send({ type: IPacketBodyType.Close })
 
 			await new Promise<void>(resolve => this.socket.close(resolve))
 		}
@@ -222,11 +146,11 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 
 		this.checkPeerTimeouts = {}
 
-		for (const pending of Object.values(this.pendingAcknowledgement)) {
+		for (const pending of Object.values(this.pendingAcknowledgements)) {
 			clearInterval(pending.intervalId)
 		}
 
-		this.pendingAcknowledgement = {}
+		this.pendingAcknowledgements = {}
 
 		this.socket = null
 
@@ -234,13 +158,13 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 
 		this.instanceId = null
 
-		this.knownPeer = []
+		this.knownPeers = []
 
-		for (const packet of Object.values(this.knownPacket)) {
+		for (const packet of Object.values(this.knownPackets)) {
 			clearTimeout(packet.timeoutId)
 		}
 
-		this.knownPacket = {}
+		this.knownPackets = {}
 
 		this.isClosing = false
 
@@ -273,7 +197,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 	}
 
 	private sendPacket(
-		data: IAllSend<Data>,
+		data: IAllPacketBody<Data>,
 		targetIds: UUID[] | '*',
 		sendAcknowledgement: boolean = true
 	) {
@@ -283,7 +207,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 			const sendData: IPacketData<Data> = {
 				type: IPacketType.Data,
 				id: packetId,
-				data: data,
+				body: data,
 				sender: {
 					id: this.id,
 				},
@@ -291,26 +215,27 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 			}
 
 			if (sendAcknowledgement) {
-				this.pendingAcknowledgement[packetId] = {
-					pendingTarget: this.knownPeer.map(peer => peer.id),
+				this.pendingAcknowledgements[packetId] = {
+					pendingTarget: this.knownPeers.map(peer => peer.id),
 					intervalId: setInterval(() => {
-						this.pendingAcknowledgement[
+						this.pendingAcknowledgements[
 							packetId
 						].remainingRetry -= 1
 
 						this.sendRawPacket({
 							...sendData,
 							targetIds:
-								this.pendingAcknowledgement[packetId]
+								this.pendingAcknowledgements[packetId]
 									.pendingTarget,
 						})
 
 						if (
-							this.pendingAcknowledgement[packetId]
+							this.pendingAcknowledgements[packetId]
 								.remainingRetry === 0
 						) {
 							clearInterval(
-								this.pendingAcknowledgement[packetId].intervalId
+								this.pendingAcknowledgements[packetId]
+									.intervalId
 							)
 
 							this.internalEvent.off(
@@ -320,7 +245,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 
 							resolve()
 
-							delete this.pendingAcknowledgement[packetId]
+							delete this.pendingAcknowledgements[packetId]
 						}
 					}, this.acknowledgementTimeout),
 					remainingRetry: this.maxRetry,
@@ -350,13 +275,13 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 		})
 	}
 
-	private async send(send: ISend) {
-		await this.sendPacket(send, '*', send.type !== ISendType.Announce)
+	private async send(send: IPacketBody) {
+		await this.sendPacket(send, '*', send.type !== IPacketBodyType.Announce)
 	}
 
 	public async sendData(data: Data) {
-		const sendData: ISendData<Data> = {
-			type: ISendType.Data,
+		const sendData: IPacketBodyData<Data> = {
+			type: IPacketBodyType.Data,
 			data,
 		}
 
@@ -395,13 +320,13 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 		} else {
 			if (this.isClosing) return
 
-			if (data.data.type === ISendType.Announce) {
+			if (data.body.type === IPacketBodyType.Announce) {
 				if (!this.isPeerIdKnown(data.sender.id)) {
-					this.knownPeer.push(data.sender)
+					this.knownPeers.push(data.sender)
 
 					this.emit('newPeer', {
 						remoteInfo,
-						handshake: data.data.data.handshake,
+						handshake: data.body.data.handshake,
 						sender: data.sender,
 					})
 				}
@@ -416,15 +341,15 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 			} else {
 				this.sendAcknowledgement(data.id, data.sender)
 
-				if (this.knownPacket[data.id]) return // Data already parsed
+				if (this.knownPackets[data.id]) return // Data already parsed
 
-				this.knownPacket[data.id] = {
+				this.knownPackets[data.id] = {
 					timeoutId: setTimeout(() => {
-						delete this.knownPacket[data.id]
+						delete this.knownPackets[data.id]
 					}, this.maxRetry * this.acknowledgementTimeout * 2),
 				}
 
-				if (data.data.type === ISendType.Close) {
+				if (data.body.type === IPacketBodyType.Close) {
 					if (!this.isPeerIdKnown(data.sender.id)) return // Peer is not known
 
 					this.removePeer({ remoteInfo, sender: data.sender })
@@ -434,13 +359,13 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 
 						delete this.checkPeerTimeouts[data.sender.id]
 					}
-				} else if (data.data.type === ISendType.Data) {
+				} else if (data.body.type === IPacketBodyType.Data) {
 					if (
 						this.shouldAcceptDataBeforeAnnounce ||
 						this.isPeerIdKnown(data.sender.id)
 					) {
 						this.emit('data', {
-							data: data.data.data as Data,
+							data: data.body.data as Data,
 							sender: data.sender,
 						})
 					}
@@ -450,7 +375,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 	}
 
 	private getPeerById(id: string): IPeer | null {
-		return this.knownPeer.find(peer => peer.id === id)
+		return this.knownPeers.find(peer => peer.id === id)
 	}
 
 	private isPeerIdKnown(id: string): boolean {
@@ -461,22 +386,22 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 		acknowledgedId: UUID,
 		sender: IPeer
 	) {
-		if (!this.pendingAcknowledgement[acknowledgedId]) return
+		if (!this.pendingAcknowledgements[acknowledgedId]) return
 
-		this.pendingAcknowledgement[acknowledgedId].pendingTarget =
-			this.pendingAcknowledgement[acknowledgedId].pendingTarget.filter(
+		this.pendingAcknowledgements[acknowledgedId].pendingTarget =
+			this.pendingAcknowledgements[acknowledgedId].pendingTarget.filter(
 				target => target !== sender.id
 			)
 
 		if (
-			this.pendingAcknowledgement[acknowledgedId].pendingTarget.length ===
-			0
+			this.pendingAcknowledgements[acknowledgedId].pendingTarget
+				.length === 0
 		) {
 			clearInterval(
-				this.pendingAcknowledgement[acknowledgedId].intervalId
+				this.pendingAcknowledgements[acknowledgedId].intervalId
 			)
 
-			delete this.pendingAcknowledgement[acknowledgedId]
+			delete this.pendingAcknowledgements[acknowledgedId]
 
 			this.internalEvent.emit('acknowledgementReceivedAll', {
 				packetId: acknowledgedId,
@@ -491,10 +416,10 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 		remoteInfo: dgram.RemoteInfo
 		sender: IPeer
 	}) {
-		this.knownPeer = this.knownPeer.filter(peer => peer.id !== sender.id)
+		this.knownPeers = this.knownPeers.filter(peer => peer.id !== sender.id)
 
 		for (const packetId of Object.keys(
-			this.pendingAcknowledgement
+			this.pendingAcknowledgements
 		) as UUID[]) {
 			this.removeReceiverFromPendingAcknowledgement(packetId, sender)
 		}
