@@ -1,4 +1,4 @@
-const IsValidJson = <T>(str: string): [boolean, T] => {
+const IsValidJSON = <T>(str: string): [boolean, T] => {
 	try {
 		return [true, JSON.parse(str)]
 	} catch (err) {
@@ -6,4 +6,4 @@ const IsValidJson = <T>(str: string): [boolean, T] => {
 	}
 }
 
-export default IsValidJson
+export default IsValidJSON
