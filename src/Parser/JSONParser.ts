@@ -64,7 +64,7 @@ class JSONParser<Handshake, Data> extends BaseParser<Handshake, Data> {
 			IsUUID(test?.id) &&
 			IsPeer(test?.sender) &&
 			IsTargetIds(test?.targetIds) &&
-			this.isValidPacketDataBody(test?.body) // fix validate close and announce body
+			this.isValidPacketDataBody(test?.body)
 		)
 	}
 
