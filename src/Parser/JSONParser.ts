@@ -8,7 +8,6 @@ import {
 } from '../Types.js'
 
 import IsPeer from '../Utils/IsPeer.js'
-import IsTargetIds from '../Utils/IsTargetIds.js'
 import IsUUID from '../Utils/IsUUID.js'
 import IsValidJSON from '../Utils/IsValidJSON.js'
 
@@ -51,8 +50,7 @@ class JSONParser<Handshake, Data> extends BaseParser<Handshake, Data> {
 		return (
 			test?.type === IPacketType.Acknowledgement &&
 			IsUUID(test?.acknowledgedId) &&
-			IsPeer(test?.sender) &&
-			IsTargetIds(test?.targetIds)
+			IsUUID(test?.sender)
 		)
 	}
 
@@ -62,8 +60,7 @@ class JSONParser<Handshake, Data> extends BaseParser<Handshake, Data> {
 		return (
 			test?.type === IPacketType.Data &&
 			IsUUID(test?.id) &&
-			IsPeer(test?.sender) &&
-			IsTargetIds(test?.targetIds) &&
+			IsUUID(test?.sender) &&
 			this.isValidPacketDataBody(test?.body)
 		)
 	}

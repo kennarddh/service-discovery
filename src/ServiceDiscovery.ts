@@ -22,6 +22,8 @@ import {
 	IPacketType,
 	IPeer,
 	IPendingAcknowledgements,
+	ISender,
+	IReceivers,
 } from './Types.js'
 
 class ServiceDiscovery<Handshake, Data> extends TypedEmitter<
@@ -192,20 +194,38 @@ class ServiceDiscovery<Handshake, Data> extends TypedEmitter<
 		this.internalIsListening = value
 	}
 
-	private sendRawPacket(data: IAllPacket<Handshake, Data>) {
-		return new Promise<void>(resolve => {
-			if (!this.isListening)
-				throw new Error('Socket is not currently listening')
+	private sendRawPacket(
+		data: IAllPacket<Handshake, Data>,
+		receivers: IReceivers = '*'
+	) {
+		if (!this.isListening)
+			throw new Error('Socket is not currently listening')
 
+		return new Promise<void>(resolve => {
 			const message = this.parser.serializePacket(data)
 
-			this.socket.send(message, this.port, this.host, () => resolve())
+			if (receivers === '*')
+				this.socket.send(message, this.port, this.host, () => resolve())
+			else {
+				Promise.all(
+					receivers.map(
+						receiver =>
+							new Promise<void>(resolve => {
+								const host = this.getPeerById(receiver).host
+
+								this.socket.send(message, this.port, host, () =>
+									resolve()
+								)
+							})
+					)
+				).then(() => resolve())
+			}
 		})
 	}
 
 	private sendPacket(
 		data: IAllPacketBody<Handshake, Data>,
-		targetIds: UUID[] | '*',
+		receivers: UUID[] | '*',
 		sendAcknowledgement: boolean = true
 	) {
 		return new Promise<void>(resolve => {
@@ -215,26 +235,23 @@ class ServiceDiscovery<Handshake, Data> extends TypedEmitter<
 				type: IPacketType.Data,
 				id: packetId,
 				body: data,
-				sender: {
-					id: this.id,
-				},
-				targetIds,
+				sender: this.id,
 			}
 
 			if (sendAcknowledgement) {
 				this.pendingAcknowledgements[packetId] = {
-					pendingTarget: this.knownPeers.map(peer => peer.id),
+					pendingReceivers: this.knownPeers.map(peer => peer.id),
 					intervalId: setInterval(() => {
+						// On retry
 						this.pendingAcknowledgements[
 							packetId
 						].remainingRetry -= 1
 
-						this.sendRawPacket({
-							...sendData,
-							targetIds:
-								this.pendingAcknowledgements[packetId]
-									.pendingTarget,
-						})
+						this.sendRawPacket(
+							sendData,
+							this.pendingAcknowledgements[packetId]
+								.pendingReceivers
+						)
 
 						if (
 							this.pendingAcknowledgements[packetId]
@@ -277,8 +294,8 @@ class ServiceDiscovery<Handshake, Data> extends TypedEmitter<
 					'acknowledgementReceivedAll',
 					onAckReceivedAll
 				)
-				this.sendRawPacket(sendData)
-			} else this.sendRawPacket(sendData).then(() => resolve())
+				this.sendRawPacket(sendData, receivers)
+			} else this.sendRawPacket(sendData, receivers).then(() => resolve())
 		})
 	}
 
@@ -295,15 +312,15 @@ class ServiceDiscovery<Handshake, Data> extends TypedEmitter<
 		await this.sendPacket(sendData, '*')
 	}
 
-	private sendAcknowledgement(packetId: UUID, sender: IPeer) {
-		this.sendRawPacket({
-			type: IPacketType.Acknowledgement,
-			targetIds: [sender.id],
-			acknowledgedId: packetId,
-			sender: {
-				id: this.id,
+	private sendAcknowledgement(packetId: UUID, sender: ISender) {
+		this.sendRawPacket(
+			{
+				type: IPacketType.Acknowledgement,
+				acknowledgedId: packetId,
+				sender: this.id,
 			},
-		})
+			[sender]
+		)
 	}
 
 	private parseMessage(message: Buffer, remoteInfo: dgram.RemoteInfo) {
@@ -311,10 +328,7 @@ class ServiceDiscovery<Handshake, Data> extends TypedEmitter<
 
 		if (!isValid) return // Ignore invalid packet
 
-		if (data.sender.id === this.id) return // Ignore this instance packet
-
-		if (!(data.targetIds === '*' || data.targetIds.includes(this.id)))
-			return // Ignore packet if not targeted
+		if (data.sender === this.id) return // Ignore this instance packet
 
 		if (data.type === IPacketType.Acknowledgement) {
 			// Remove receiver from pending array
@@ -326,21 +340,25 @@ class ServiceDiscovery<Handshake, Data> extends TypedEmitter<
 			if (this.isClosing) return
 
 			if (data.body.type === IPacketBodyType.Announce) {
-				if (!this.isPeerIdKnown(data.sender.id)) {
-					this.knownPeers.push(data.sender)
+				if (!this.isPeerIdKnown(data.sender)) {
+					this.knownPeers.push({
+						id: data.sender,
+						host: remoteInfo.address,
+						port: remoteInfo.port,
+					})
 
 					this.emit('newPeer', {
 						remoteInfo,
 						handshake: data.body.data.handshake,
-						sender: data.sender,
+						peer: this.getPeerById(data.sender),
 					})
 				}
 
-				if (this.checkPeerTimeouts[data.sender.id]) {
-					clearTimeout(this.checkPeerTimeouts[data.sender.id])
+				if (this.checkPeerTimeouts[data.sender]) {
+					clearTimeout(this.checkPeerTimeouts[data.sender])
 				}
 
-				this.checkPeerTimeouts[data.sender.id] = setTimeout(() => {
+				this.checkPeerTimeouts[data.sender] = setTimeout(() => {
 					this.removePeer({ remoteInfo, sender: data.sender })
 				}, this.peerAnnounceTimeout)
 			} else {
@@ -355,19 +373,19 @@ class ServiceDiscovery<Handshake, Data> extends TypedEmitter<
 				}
 
 				if (data.body.type === IPacketBodyType.Close) {
-					if (!this.isPeerIdKnown(data.sender.id)) return // Peer is not known
+					if (!this.isPeerIdKnown(data.sender)) return // Peer is not known
 
 					this.removePeer({ remoteInfo, sender: data.sender })
 
-					if (this.checkPeerTimeouts[data.sender.id]) {
-						clearTimeout(this.checkPeerTimeouts[data.sender.id])
+					if (this.checkPeerTimeouts[data.sender]) {
+						clearTimeout(this.checkPeerTimeouts[data.sender])
 
-						delete this.checkPeerTimeouts[data.sender.id]
+						delete this.checkPeerTimeouts[data.sender]
 					}
 				} else if (data.body.type === IPacketBodyType.Data) {
 					if (
 						this.shouldAcceptDataBeforeAnnounce ||
-						this.isPeerIdKnown(data.sender.id)
+						this.isPeerIdKnown(data.sender)
 					) {
 						this.emit('data', {
 							data: data.body.data as Data,
@@ -389,17 +407,17 @@ class ServiceDiscovery<Handshake, Data> extends TypedEmitter<
 
 	private removeReceiverFromPendingAcknowledgement(
 		acknowledgedId: UUID,
-		sender: IPeer
+		sender: ISender
 	) {
 		if (!this.pendingAcknowledgements[acknowledgedId]) return
 
-		this.pendingAcknowledgements[acknowledgedId].pendingTarget =
-			this.pendingAcknowledgements[acknowledgedId].pendingTarget.filter(
-				target => target !== sender.id
-			)
+		this.pendingAcknowledgements[acknowledgedId].pendingReceivers =
+			this.pendingAcknowledgements[
+				acknowledgedId
+			].pendingReceivers.filter(receiver => receiver !== sender)
 
 		if (
-			this.pendingAcknowledgements[acknowledgedId].pendingTarget
+			this.pendingAcknowledgements[acknowledgedId].pendingReceivers
 				.length === 0
 		) {
 			clearInterval(
@@ -419,9 +437,9 @@ class ServiceDiscovery<Handshake, Data> extends TypedEmitter<
 		sender,
 	}: {
 		remoteInfo: dgram.RemoteInfo
-		sender: IPeer
+		sender: ISender
 	}) {
-		this.knownPeers = this.knownPeers.filter(peer => peer.id !== sender.id)
+		this.knownPeers = this.knownPeers.filter(peer => peer.id !== sender)
 
 		for (const packetId of Object.keys(
 			this.pendingAcknowledgements
@@ -431,7 +449,7 @@ class ServiceDiscovery<Handshake, Data> extends TypedEmitter<
 
 		this.emit('peerRemoved', {
 			remoteInfo,
-			sender: sender,
+			peer: this.getPeerById(sender),
 		})
 	}
 }

@@ -42,20 +42,20 @@ serviceDiscovery.on('close', () => {
 	clearInterval(dataIntervalId)
 })
 
-serviceDiscovery.on('newPeer', ({ remoteInfo, handshake, sender }) => {
+serviceDiscovery.on('newPeer', ({ remoteInfo, handshake, peer }) => {
 	console.log('New peer joined, ', {
 		port: remoteInfo.port,
 		host: remoteInfo.address,
 		handshake,
-		sender,
+		peer,
 	})
 })
 
-serviceDiscovery.on('peerRemoved', ({ remoteInfo, sender }) => {
+serviceDiscovery.on('peerRemoved', ({ remoteInfo, peer }) => {
 	console.log('Peer removed, ', {
 		port: remoteInfo.port,
 		host: remoteInfo.address,
-		sender,
+		peer,
 	})
 })
 
@@ -75,15 +75,18 @@ if (!!process.argv[2]) {
 
 const dataIntervalId = setInterval(() => {
 	if (serviceDiscovery.isListening) {
-		serviceDiscovery.sendData('a')
+		if (!!process.argv[2]) {
+			serviceDiscovery.sendData('a')
+		}
 	} else {
 		clearInterval(dataIntervalId)
 	}
-}, 1000)
+}, 20000)
 
-// setTimeout(() => {
-// 	serviceDiscovery.sendData('a')
-// }, 5000)
+setTimeout(() => {
+	console.log(15000)
+	// serviceDiscovery.sendData('a')
+}, 15000)
 
 // const largeText = readFileSync('./largeText60000.txt').toString('utf-8')
 

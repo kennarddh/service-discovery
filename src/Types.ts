@@ -8,13 +8,13 @@ export interface IEvents<Handshake, Data> {
 	start: (data: { socket: dgram.Socket }) => void
 	close: () => void
 	error: (error: Error) => void
-	data: (data: { data: Data; sender: IPeer }) => void
+	data: (data: { data: Data; sender: ISender }) => void
 	newPeer: (data: {
 		remoteInfo: dgram.RemoteInfo
 		handshake: Handshake
-		sender: IPeer
+		peer: IPeer
 	}) => void
-	peerRemoved: (data: { remoteInfo: dgram.RemoteInfo; sender: IPeer }) => void
+	peerRemoved: (data: { remoteInfo: dgram.RemoteInfo; peer: IPeer }) => void
 }
 
 export interface IInternalEvents {
@@ -23,7 +23,13 @@ export interface IInternalEvents {
 
 export interface IPeer {
 	id: UUID
+	host: string
+	port: number
 }
+
+export type ISender = UUID
+
+export type IReceivers = UUID[] | '*'
 
 export interface IPacketBodyBase {}
 
@@ -62,21 +68,17 @@ export enum IPacketType {
 	Data,
 }
 
-export type ITargetIds = UUID[] | '*'
-
 export interface IPacketData<Handshake, Data> {
 	type: IPacketType.Data
 	id: UUID
 	body: IAllPacketBody<Handshake, Data>
-	sender: IPeer
-	targetIds: ITargetIds
+	sender: ISender
 }
 
 export interface IPacketAcknowledgement {
 	type: IPacketType.Acknowledgement
 	acknowledgedId: UUID
-	sender: IPeer
-	targetIds: ITargetIds
+	sender: ISender
 }
 
 export type IAllPacket<Handshake, Data> =
@@ -105,7 +107,7 @@ export type IPendingAcknowledgements = Record<
 	UUID,
 	{
 		intervalId: NodeJS.Timer
-		pendingTarget: UUID[]
+		pendingReceivers: Exclude<IReceivers, '*'>
 		remainingRetry: number
 	}
 >
