@@ -1,14 +1,23 @@
 import { IAllPacket } from '../Types'
 
-interface IParser<Data> {
-	isValidPacket(data: Buffer): [true, IAllPacket<Data>] | [false, null]
-	serializePacket(data: IAllPacket<Data>): Buffer
+interface IParser<Handshake, Data> {
+	isValidPacket(
+		data: Buffer
+	): [true, IAllPacket<Handshake, Data>] | [false, null]
+	serializePacket(data: IAllPacket<Handshake, Data>): Buffer
 }
 
-export type IIsValidBody<Data> = (test: unknown) => test is Data
+export type IIsValidBody<Data> = (
+	test: Partial<Data> | undefined
+) => test is Data
 
-export interface ParserOptions<Data> {
+export type IIsValidHandshake<Handshake> = (
+	test: Partial<Handshake> | undefined
+) => test is Handshake
+
+export interface IParserOptions<Handshake, Data> {
 	isValidBody: IIsValidBody<Data>
+	isValidHandshake: IIsValidHandshake<Handshake>
 }
 
 export default IParser

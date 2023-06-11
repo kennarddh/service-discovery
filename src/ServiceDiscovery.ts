@@ -6,14 +6,12 @@ import { TypedEmitter } from 'tiny-typed-emitter'
 import SetImmediateInterval from './Utils/SetImmediateInterval.js'
 
 import IParser from './Parser/Types.js'
-import JSONParser from './Parser/JSONParser.js'
 
 import {
 	IAllPacket,
 	IAllPacketBody,
 	ICheckPeerTimeouts,
 	IEvents,
-	IHandshake,
 	IInternalEvents,
 	IKnownPackets,
 	IOptions,
@@ -26,7 +24,9 @@ import {
 	IPendingAcknowledgements,
 } from './Types.js'
 
-class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
+class ServiceDiscovery<Handshake, Data> extends TypedEmitter<
+	IEvents<Handshake, Data>
+> {
 	private socket: dgram.Socket
 	private host: string
 	private port: number
@@ -58,21 +58,19 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 
 	private internalEvent: TypedEmitter<IInternalEvents> = new TypedEmitter()
 
-	private parser: IParser<Data>
+	private parser: IParser<Handshake, Data>
 
-	public constructor(
-		{
-			host = '224.0.0.114',
-			port = 60540,
-			ttl = 1,
-			announceInterval = 2000,
-			peerAnnounceTimeout = 4000,
-			shouldAcceptDataBeforeAnnounce = false,
-			acknowledgementTimeout = 3000,
-			maxRetry = 3,
-			parser,
-		}: IOptions<Data>
-	) {
+	public constructor({
+		host = '224.0.0.114',
+		port = 60540,
+		ttl = 1,
+		announceInterval = 2000,
+		peerAnnounceTimeout = 4000,
+		shouldAcceptDataBeforeAnnounce = false,
+		acknowledgementTimeout = 3000,
+		maxRetry = 3,
+		parser,
+	}: IOptions<Handshake, Data>) {
 		super()
 
 		this.host = host
@@ -90,7 +88,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 		this.parser = parser
 	}
 
-	public listen(handshake: IHandshake = {}) {
+	public listen(handshake: Handshake) {
 		if (this.isListening) throw new Error('Socket already listening')
 
 		this.isListening = true
@@ -194,7 +192,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 		this.internalIsListening = value
 	}
 
-	private sendRawPacket(data: IAllPacket<Data>) {
+	private sendRawPacket(data: IAllPacket<Handshake, Data>) {
 		return new Promise<void>(resolve => {
 			if (!this.isListening)
 				throw new Error('Socket is not currently listening')
@@ -206,14 +204,14 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 	}
 
 	private sendPacket(
-		data: IAllPacketBody<Data>,
+		data: IAllPacketBody<Handshake, Data>,
 		targetIds: UUID[] | '*',
 		sendAcknowledgement: boolean = true
 	) {
 		return new Promise<void>(resolve => {
 			const packetId = crypto.randomUUID()
 
-			const sendData: IPacketData<Data> = {
+			const sendData: IPacketData<Handshake, Data> = {
 				type: IPacketType.Data,
 				id: packetId,
 				body: data,
@@ -284,7 +282,7 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 		})
 	}
 
-	private async send(send: IPacketBody) {
+	private async send(send: IPacketBody<Handshake>) {
 		await this.sendPacket(send, '*', send.type !== IPacketBodyType.Announce)
 	}
 
@@ -311,12 +309,12 @@ class ServiceDiscovery<Data> extends TypedEmitter<IEvents<Data>> {
 	private parseMessage(message: Buffer, remoteInfo: dgram.RemoteInfo) {
 		const [isValid, data] = this.parser.isValidPacket(message)
 
-		if (!isValid) return // Ignore invalid messages
+		if (!isValid) return // Ignore invalid packet
 
-		if (data.sender.id === this.id) return // Ignore this instance message
+		if (data.sender.id === this.id) return // Ignore this instance packet
 
 		if (!(data.targetIds === '*' || data.targetIds.includes(this.id)))
-			return // Ignore message if not targeted
+			return // Ignore packet if not targeted
 
 		if (data.type === IPacketType.Acknowledgement) {
 			// Remove receiver from pending array

@@ -4,14 +4,14 @@ import { UUID } from 'crypto'
 
 import BaseParser from './Parser/BaseParser'
 
-export interface IEvents<Data> {
+export interface IEvents<Handshake, Data> {
 	start: (data: { socket: dgram.Socket }) => void
 	close: () => void
 	error: (error: Error) => void
 	data: (data: { data: Data; sender: IPeer }) => void
 	newPeer: (data: {
 		remoteInfo: dgram.RemoteInfo
-		handshake: IHandshake
+		handshake: Handshake
 		sender: IPeer
 	}) => void
 	peerRemoved: (data: { remoteInfo: dgram.RemoteInfo; sender: IPeer }) => void
@@ -33,10 +33,10 @@ export enum IPacketBodyType {
 	Data,
 }
 
-export interface IPacketBodyAnnounce extends IPacketBodyBase {
+export interface IPacketBodyAnnounce<Handshake> extends IPacketBodyBase {
 	type: IPacketBodyType.Announce
 	data: {
-		handshake: IHandshake
+		handshake: Handshake
 	}
 }
 
@@ -49,9 +49,13 @@ export interface IPacketBodyData<T> extends IPacketBodyBase {
 	data: T
 }
 
-export type IPacketBody = IPacketBodyAnnounce | IPacketBodyClose
+export type IPacketBody<Handshake> =
+	| IPacketBodyAnnounce<Handshake>
+	| IPacketBodyClose
 
-export type IAllPacketBody<Data> = IPacketBodyData<Data> | IPacketBody
+export type IAllPacketBody<Handshake, Data> =
+	| IPacketBodyData<Data>
+	| IPacketBody<Handshake>
 
 export enum IPacketType {
 	Acknowledgement,
@@ -60,10 +64,10 @@ export enum IPacketType {
 
 export type ITargetIds = UUID[] | '*'
 
-export interface IPacketData<Data> {
+export interface IPacketData<Handshake, Data> {
 	type: IPacketType.Data
 	id: UUID
-	body: IAllPacketBody<Data>
+	body: IAllPacketBody<Handshake, Data>
 	sender: IPeer
 	targetIds: ITargetIds
 }
@@ -75,11 +79,11 @@ export interface IPacketAcknowledgement {
 	targetIds: ITargetIds
 }
 
-export type IAllPacket<Data> = IPacketAcknowledgement | IPacketData<Data>
+export type IAllPacket<Handshake, Data> =
+	| IPacketAcknowledgement
+	| IPacketData<Handshake, Data>
 
-export type IHandshake = Record<string, any>
-
-export interface IOptions<Data> {
+export interface IOptions<Handshake, Data> {
 	host?: string
 	port?: number
 	ttl?: number
@@ -92,7 +96,7 @@ export interface IOptions<Data> {
 	acknowledgementTimeout?: number
 	maxRetry?: number
 
-	parser: BaseParser<Data>
+	parser: BaseParser<Handshake, Data>
 }
 
 export type ICheckPeerTimeouts = Record<string, NodeJS.Timer>
